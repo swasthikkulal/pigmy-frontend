@@ -8,7 +8,7 @@ import PaymentPage from "./components/PaymentPage";
 import AccountsPage from "./components/AccountsPage";
 import Withdrawal from "./components/withDrawal";
 import Feedback from "./components/Feedback";
-import Auth from "./components/Auth";
+import CustomerLogin from "./components/CustomerLogin";
 
 // Admin Components
 import AdminLayout from "./admincomponents/AdminLayout";
@@ -22,9 +22,12 @@ import AdminFeedback from "./admincomponents/AdminFeedback";
 import ManagePayments from "./admincomponents/ManagePayments";
 
 // Auth Components
-
 import ProtectedRoute from "./admincomponents/ProtectedRoute";
 import Login from "./admincomponents/Login";
+
+// Customer Components
+import CustomerDashboard from "./components/CustomerDashboard";
+import CustomerProtectedRoute from "./components/CustomerProtectedRoute";
 
 function App() {
   const [count, setCount] = useState(0);
@@ -39,7 +42,17 @@ function App() {
           <Route path="/accountspage" element={<AccountsPage />} />
           <Route path="/withdrawal" element={<Withdrawal />} />
           <Route path="/feedback" element={<Feedback />} />
-          <Route path="/auth" element={<Auth />} />
+          <Route path="/auth" element={<CustomerLogin />} />
+
+          {/* Protected Customer Routes */}
+          <Route
+            path="/customer/dashboard"
+            element={
+              <CustomerProtectedRoute>
+                <CustomerDashboard />
+              </CustomerProtectedRoute>
+            }
+          />
 
           {/* Admin Authentication Routes */}
           <Route path="/admin/login" element={<Login />} />
@@ -69,6 +82,7 @@ function App() {
             path="/admin"
             element={<Navigate to="/admin/dashboard" replace />}
           />
+          <Route path="/customer" element={<Navigate to="/customer/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

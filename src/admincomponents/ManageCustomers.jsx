@@ -10,12 +10,16 @@ import {
   Loader,
   AlertCircle,
   RefreshCw,
+  Key,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   getCustomers,
   createCustomer,
   updateCustomer,
   getCollectors,
+  resetCustomerPassword,
 } from "../services/api";
 
 const ManageCustomers = () => {
@@ -24,6 +28,7 @@ const ManageCustomers = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [showCredentials, setShowCredentials] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCollector, setFilterCollector] = useState("");
@@ -46,6 +51,7 @@ const ManageCustomers = () => {
 
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [credentials, setCredentials] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -88,21 +94,49 @@ const ManageCustomers = () => {
     }
 
     try {
+      // Prepare customer data with authentication
+      const customerData = {
+        ...formData,
+        password: formData.customerId, // Set password as customerId for authentication
+      };
+
       if (editingCustomer) {
-        await updateCustomer(editingCustomer._id, formData);
+        await updateCustomer(editingCustomer._id, customerData);
         alert("Customer updated successfully!");
+        setShowModal(false);
+        setEditingCustomer(null);
+        resetForm();
       } else {
-        await createCustomer(formData);
+        const response = await createCustomer(customerData);
         alert("Customer created successfully!");
+        
+        // Show credentials to admin
+        setCredentials({
+          email: formData.email,
+          password: formData.customerId,
+          customerId: formData.customerId
+        });
+        setShowCredentials(true);
+        
+        setShowModal(false);
+        resetForm();
       }
-      setShowModal(false);
-      setEditingCustomer(null);
-      resetForm();
       fetchData();
     } catch (error) {
       alert(error.response?.data?.message || "Error saving customer");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleResetPassword = async (customerId) => {
+    if (window.confirm("Reset password to Customer ID? This will allow the customer to login again using their Customer ID as password.")) {
+      try {
+        await resetCustomerPassword(customerId);
+        alert("Password reset successfully! Customer can now login using their Customer ID as password.");
+      } catch (error) {
+        alert(error.response?.data?.message || "Error resetting password");
+      }
     }
   };
 
@@ -113,6 +147,7 @@ const ManageCustomers = () => {
     if (!formData.dateOfBirth) errors.dateOfBirth = "Date of birth is required";
     if (!formData.phone.trim() || formData.phone.length !== 10)
       errors.phone = "Valid 10-digit phone number is required";
+    if (!formData.email.trim()) errors.email = "Email is required for login"; // Email is now required
     if (!formData.address.trim()) errors.address = "Address is required";
     if (!formData.aadhaarNumber.trim() || formData.aadhaarNumber.length !== 12)
       errors.aadhaarNumber = "Valid 12-digit Aadhaar number is required";
@@ -127,13 +162,14 @@ const ManageCustomers = () => {
   };
 
   const resetForm = () => {
+    const newCustomerId = generateCustomerId();
     setFormData({
-      customerId: generateCustomerId(),
+      customerId: newCustomerId,
       name: "",
       gender: "male",
       dateOfBirth: "",
       phone: "",
-      email: "",
+      email: `${newCustomerId.toLowerCase()}@pigmy.com`, // Auto-generate email
       address: "",
       aadhaarNumber: "",
       panNumber: "",
@@ -143,6 +179,8 @@ const ManageCustomers = () => {
       status: "active",
     });
     setFormErrors({});
+    setCredentials(null);
+    setShowCredentials(false);
   };
 
   const openCreateModal = () => {
@@ -177,7 +215,8 @@ const ManageCustomers = () => {
     const matchesSearch =
       customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.customerId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.phone.includes(searchTerm);
+      customer.phone.includes(searchTerm) ||
+      customer.email?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesCollector =
       !filterCollector || customer.collectorId?._id === filterCollector;
@@ -245,7 +284,7 @@ const ManageCustomers = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search customers by name, ID, or phone..."
+                placeholder="Search customers by name, ID, phone, or email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -302,9 +341,7 @@ const ManageCustomers = () => {
                 <div className="space-y-3 mb-4">
                   <div className="flex items-center text-sm text-gray-600">
                     <Mail className="h-4 w-4 mr-2" />
-                    <span className="truncate">
-                      {customer.email || "No email"}
-                    </span>
+                    <span className="truncate">{customer.email}</span>
                   </div>
                   <div className="flex items-center text-sm text-gray-600">
                     <Phone className="h-4 w-4 mr-2" />
@@ -312,7 +349,7 @@ const ManageCustomers = () => {
                   </div>
                   <div className="flex items-start text-sm text-gray-600">
                     <MapPin className="h-4 w-4 mr-2 mt-0.5" />
-                    <span className="flex">{customer.address}</span>
+                    <span className="flex-1">{customer.address}</span>
                   </div>
                 </div>
 
@@ -323,13 +360,21 @@ const ManageCustomers = () => {
                       {customer.collectorId?.name || "Not assigned"}
                     </p>
                   </div>
-                  <button
-                    onClick={() => openEditModal(customer)}
-                    className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                  >
-                    <Edit className="h-4 w-4 inline mr-1" />
-                    Edit
-                  </button>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleResetPassword(customer._id)}
+                      className="text-yellow-600 hover:text-yellow-700 text-sm font-medium"
+                      title="Reset Password"
+                    >
+                      <Key className="h-4 w-4 inline" />
+                    </button>
+                    <button
+                      onClick={() => openEditModal(customer)}
+                      className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                    >
+                      <Edit className="h-4 w-4 inline" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -408,6 +453,9 @@ const ManageCustomers = () => {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
                           readOnly
                         />
+                        <p className="text-xs text-gray-500 mt-1">
+                          This will be used as password for login
+                        </p>
                       </div>
 
                       <div>
@@ -494,17 +542,26 @@ const ManageCustomers = () => {
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Email Address
+                          Email Address *
                         </label>
                         <input
                           type="email"
+                          required
                           value={formData.email}
                           onChange={(e) =>
                             setFormData({ ...formData, email: e.target.value })
                           }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                          placeholder="Optional email address"
+                          placeholder="Email address for login"
                         />
+                        {formErrors.email && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {formErrors.email}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          This will be used as username for login
+                        </p>
                       </div>
 
                       <div>
@@ -694,6 +751,63 @@ const ManageCustomers = () => {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Credentials Modal */}
+        {showCredentials && credentials && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Customer Login Credentials
+                  </h3>
+                  <button
+                    onClick={() => setShowCredentials(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center mb-2">
+                    <Key className="h-5 w-5 text-yellow-600 mr-2" />
+                    <span className="font-medium text-yellow-800">Share these credentials with the customer:</span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Email (Username)</label>
+                      <div className="mt-1 p-2 bg-white border border-gray-300 rounded-lg font-mono text-sm">
+                        {credentials.email}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Password</label>
+                      <div className="mt-1 p-2 bg-white border border-gray-300 rounded-lg font-mono text-sm">
+                        {credentials.customerId}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <p className="text-xs text-yellow-700 mt-3">
+                    💡 The customer should use their Customer ID as password when logging in.
+                  </p>
+                </div>
+                
+                <button
+                  onClick={() => setShowCredentials(false)}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>
