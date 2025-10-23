@@ -58,7 +58,7 @@ const CustomerLogin = () => {
       localStorage.setItem('customerData', JSON.stringify(response.data.data));
       
       // Redirect to customer dashboard
-      navigate('/customer/dashboard');
+      navigate('/');
     }
   } catch (error) {
     setError(error.response?.data?.message || 'Login failed. Please try again.');

@@ -10,7 +10,8 @@ import {
   MessageSquare,
   ArrowDownToLine,
   LogOut,
-  Settings
+  Settings,
+  User
 } from "lucide-react";
 
 const mockTransactions = [
@@ -88,11 +89,10 @@ const mockTransactions = [
   },
 ];
 
-const PigmyXprressDashboard = () => {
+const PigmyXpressDashboard = () => {
   const navigate = useNavigate();
   const [transactions, setTransactions] = useState(mockTransactions);
-  const [filteredTransactions, setFilteredTransactions] =
-    useState(mockTransactions);
+  const [filteredTransactions, setFilteredTransactions] = useState(mockTransactions);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -129,6 +129,14 @@ const PigmyXprressDashboard = () => {
     alert(
       "Export Started: Your transaction history is being prepared for download."
     );
+  };
+
+  const handleCustomerLogin = () => {
+    navigate("/auth");
+  };
+
+  const handleAdminLogin = () => {
+    navigate("/admin/login");
   };
 
   const totalTransactions = transactions.length;
@@ -254,8 +262,9 @@ const PigmyXprressDashboard = () => {
         </div>
         <button
           onClick={onExport}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors flex items-center gap-2"
         >
+          <ArrowDownToLine className="h-4 w-4" />
           Export
         </button>
       </div>
@@ -271,27 +280,54 @@ const PigmyXprressDashboard = () => {
             <div>
               <h1 className="text-3xl font-bold text-white">PigmyXpress</h1>
               <p className="text-blue-100 mt-1">
-                Transaction & Payment Management
+                Complete Savings & Payment Management System
               </p>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <p className="text-sm text-blue-200">Welcome back</p>
-                <p className="font-semibold text-white">Admin User</p>
+                <p className="text-sm text-blue-200">Welcome to</p>
+                <p className="font-semibold text-white">Pigmy Savings</p>
               </div>
-              <button
-                onClick={() => navigate("/auth")}
-                className="flex items-center text-white hover:bg-white/10 px-3 py-2 rounded-md transition-colors"
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                Login
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCustomerLogin}
+                  className="flex items-center text-white hover:bg-white/10 px-3 py-2 rounded-md transition-colors border border-white/30"
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  Customer Login
+                </button>
+                <button
+                  onClick={handleAdminLogin}
+                  className="flex items-center text-white hover:bg-white/10 px-3 py-2 rounded-md transition-colors border border-white/30"
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  Admin Login
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Welcome Section */}
+        <div className="bg-gradient-to-r from-green-500 to-blue-600 rounded-lg shadow-lg p-8 text-white mb-8">
+          <h2 className="text-3xl font-bold mb-4">Welcome to PigmyXpress</h2>
+          <p className="text-lg text-green-100 mb-4">
+            Your complete solution for pigmy savings management, transactions, and customer services.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <div className="bg-white/20 rounded-lg p-4">
+              <h3 className="font-semibold">For Customers</h3>
+              <p className="text-sm">Login to manage your savings accounts</p>
+            </div>
+            <div className="bg-white/20 rounded-lg p-4">
+              <h3 className="font-semibold">For Admins</h3>
+              <p className="text-sm">Manage customers, collectors, and transactions</p>
+            </div>
+          </div>
+        </div>
+
         {/* Quick Actions */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
           <button
@@ -315,7 +351,6 @@ const PigmyXprressDashboard = () => {
             <ArrowDownToLine className="h-6 w-6 mb-2 text-blue-600" />
             <span className="text-sm">Withdrawal</span>
           </button>
-
           <button
             onClick={() => navigate("/feedback")}
             className="flex flex-col items-center bg-white border border-gray-300 hover:border-blue-500 hover:bg-blue-50 p-4 rounded-md transition-colors"
@@ -324,14 +359,14 @@ const PigmyXprressDashboard = () => {
             <span className="text-sm">Feedback</span>
           </button>
           <button
-            onClick={() => navigate("/")}
+            onClick={handleCustomerLogin}
             className="flex flex-col items-center bg-white border border-gray-300 hover:border-blue-500 hover:bg-blue-50 p-4 rounded-md transition-colors"
           >
-            <ArrowUpDown className="h-6 w-6 mb-2 text-blue-600" />
-            <span className="text-sm">Transactions</span>
+            <User className="h-6 w-6 mb-2 text-blue-600" />
+            <span className="text-sm">Customer Portal</span>
           </button>
           <button
-            onClick={() => navigate("/admin")}
+            onClick={handleAdminLogin}
             className="flex flex-col items-center bg-white border border-gray-300 hover:border-blue-500 hover:bg-blue-50 p-4 rounded-md transition-colors"
           >
             <Settings className="h-6 w-6 mb-2 text-blue-600" />
@@ -387,8 +422,40 @@ const PigmyXprressDashboard = () => {
           <TransactionList transactions={filteredTransactions} />
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="bg-gray-800 text-white py-8 mt-12">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div>
+              <h3 className="text-lg font-semibold mb-4">PigmyXpress</h3>
+              <p className="text-gray-300">
+                Complete savings management system for pigmy collections, 
+                customer management, and financial tracking.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
+              <div className="space-y-2">
+                <button onClick={() => navigate("/")} className="block text-gray-300 hover:text-white">Home</button>
+                <button onClick={handleCustomerLogin} className="block text-gray-300 hover:text-white">Customer Login</button>
+                <button onClick={handleAdminLogin} className="block text-gray-300 hover:text-white">Admin Login</button>
+                <button onClick={() => navigate("/feedback")} className="block text-gray-300 hover:text-white">Feedback</button>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Contact</h3>
+              <p className="text-gray-300">Email: support@pigmyxpress.com</p>
+              <p className="text-gray-300">Phone: +91 9876543210</p>
+            </div>
+          </div>
+          <div className="border-t border-gray-700 mt-8 pt-6 text-center text-gray-400">
+            <p>&copy; 2024 PigmyXpress. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };
 
-export default PigmyXprressDashboard;
+export default PigmyXpressDashboard;
