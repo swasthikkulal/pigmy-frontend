@@ -9,6 +9,7 @@ import {
   Calendar,
   Users,
   Loader,
+  TrendingUp,
 } from "lucide-react";
 import {
   getPlans,
@@ -32,8 +33,6 @@ const ManagePlans = () => {
     duration: "",
     interestRate: "",
     description: "",
-    minAmount: "",
-    maxAmount: "",
     status: "active",
   });
   const [formErrors, setFormErrors] = useState({});
@@ -126,6 +125,13 @@ const ManagePlans = () => {
     return errors;
   };
 
+  // Calculate maturity amount
+  const calculateMaturityAmount = (amount, duration, interestRate) => {
+    const totalInvestment = amount * duration;
+    const interest = (totalInvestment * interestRate) / 100;
+    return totalInvestment + interest;
+  };
+
   const resetForm = () => {
     setFormData({
       planId: "",
@@ -135,8 +141,6 @@ const ManagePlans = () => {
       duration: "",
       interestRate: "",
       description: "",
-      minAmount: "",
-      maxAmount: "",
       status: "active",
     });
     setFormErrors({});
@@ -152,8 +156,6 @@ const ManagePlans = () => {
       duration: plan.duration || "",
       interestRate: plan.interestRate || "",
       description: plan.description || "",
-      minAmount: plan.minAmount || "",
-      maxAmount: plan.maxAmount || "",
       status: plan.status || "active",
     });
     setShowModal(true);
@@ -268,118 +270,142 @@ const ManagePlans = () => {
 
       {/* Plans Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredPlans.map((plan) => (
-          <div
-            key={plan._id}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-                  <Package className="h-6 w-6 text-orange-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {plan.name}
-                  </h3>
-                  <p className="text-xs text-gray-500">{plan.planId}</p>
-                  <div className="flex gap-1 mt-1">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getTypeColor(
-                        plan.type
-                      )}`}
-                    >
-                      {plan.type}
-                    </span>
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                        plan.status
-                      )}`}
-                    >
-                      {plan.status}
-                    </span>
+        {filteredPlans.map((plan) => {
+          const maturityAmount = calculateMaturityAmount(
+            plan.amount,
+            plan.duration,
+            plan.interestRate
+          );
+          const totalInvestment = plan.amount * plan.duration;
+          const interestEarned = maturityAmount - totalInvestment;
+
+          return (
+            <div
+              key={plan._id}
+              className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                    <Package className="h-6 w-6 text-orange-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {plan.name}
+                    </h3>
+                    <p className="text-xs text-gray-500">{plan.planId}</p>
+                    <div className="flex gap-1 mt-1">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getTypeColor(
+                          plan.type
+                        )}`}
+                      >
+                        {plan.type}
+                      </span>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                          plan.status
+                        )}`}
+                      >
+                        {plan.status}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {plan.description && (
-              <p className="text-sm text-gray-600 mb-3">{plan.description}</p>
-            )}
+              {plan.description && (
+                <p className="text-sm text-gray-600 mb-3">{plan.description}</p>
+              )}
 
-            <div className="space-y-3 mb-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Amount</span>
-                <span className="font-semibold text-gray-900 flex items-center">
-                  <IndianRupee className="h-4 w-4 mr-1" />
-                  {plan.amount}/{plan.type}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Duration</span>
-                <span className="font-medium text-gray-900">
-                  {plan.duration} {plan.type}s
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Interest Rate</span>
-                <span className="font-medium text-green-600">
-                  {plan.interestRate}%
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Subscribers</span>
-                <span className="font-medium text-gray-900 flex items-center">
-                  <Users className="h-4 w-4 mr-1" />
-                  {plan.totalSubscribers || 0}
-                </span>
-              </div>
-
-              {(plan.minAmount || plan.maxAmount) && (
+              <div className="space-y-3 mb-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Amount Range</span>
-                  <span className="font-medium text-gray-900">
-                    {plan.minAmount && `₹${plan.minAmount}`}
-                    {plan.minAmount && plan.maxAmount && " - "}
-                    {plan.maxAmount && `₹${plan.maxAmount}`}
+                  <span className="text-gray-600">Amount</span>
+                  <span className="font-semibold text-gray-900 flex items-center">
+                    <IndianRupee className="h-4 w-4 mr-1" />
+                    {plan.amount}/{plan.type}
                   </span>
                 </div>
-              )}
-            </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => openEditModal(plan)}
-                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                >
-                  <Edit className="h-4 w-4 inline mr-1" />
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(plan._id)}
-                  className="text-red-600 hover:text-red-700 text-sm font-medium"
-                >
-                  <Trash2 className="h-4 w-4 inline mr-1" />
-                  Delete
-                </button>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Duration</span>
+                  <span className="font-medium text-gray-900">
+                    {plan.duration} {plan.type}s
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Interest Rate</span>
+                  <span className="font-medium text-green-600">
+                    {plan.interestRate}%
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Total Investment</span>
+                  <span className="font-medium text-gray-900 flex items-center">
+                    <IndianRupee className="h-4 w-4 mr-1" />
+                    {totalInvestment}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Interest Earned</span>
+                  <span className="font-medium text-green-600 flex items-center">
+                    <TrendingUp className="h-4 w-4 mr-1" />
+                    <IndianRupee className="h-4 w-4 mr-1" />
+                    {interestEarned.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm bg-blue-50 p-2 rounded-lg border border-blue-200">
+                  <span className="text-gray-700 font-medium">Maturity Amount</span>
+                  <span className="font-bold text-blue-700 flex items-center">
+                    <IndianRupee className="h-4 w-4 mr-1" />
+                    {maturityAmount.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Subscribers</span>
+                  <span className="font-medium text-gray-900 flex items-center">
+                    <Users className="h-4 w-4 mr-1" />
+                    {plan.totalSubscribers || 0}
+                  </span>
+                </div>
               </div>
 
-              <select
-                value={plan.status}
-                onChange={(e) => handleStatusUpdate(plan._id, e.target.value)}
-                className="text-xs border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="archived">Archived</option>
-              </select>
+              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => openEditModal(plan)}
+                    className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                  >
+                    <Edit className="h-4 w-4 inline mr-1" />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(plan._id)}
+                    className="text-red-600 hover:text-red-700 text-sm font-medium"
+                  >
+                    <Trash2 className="h-4 w-4 inline mr-1" />
+                    Delete
+                  </button>
+                </div>
+
+                <select
+                  value={plan.status}
+                  onChange={(e) => handleStatusUpdate(plan._id, e.target.value)}
+                  className="text-xs border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {filteredPlans.length === 0 && (
@@ -537,7 +563,7 @@ const ManagePlans = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Interest Rate (%) *
@@ -568,34 +594,23 @@ const ManagePlans = () => {
                     )}
                   </div>
 
+                  {/* Maturity Amount Preview */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Min Amount (₹)
+                      Maturity Amount
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.minAmount}
-                      onChange={(e) =>
-                        setFormData({ ...formData, minAmount: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Max Amount (₹)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.maxAmount}
-                      onChange={(e) =>
-                        setFormData({ ...formData, maxAmount: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                    <div className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700">
+                      <span className="font-medium">
+                        ₹
+                        {formData.amount && formData.duration && formData.interestRate
+                          ? calculateMaturityAmount(
+                              parseFloat(formData.amount),
+                              parseFloat(formData.duration),
+                              parseFloat(formData.interestRate)
+                            ).toFixed(2)
+                          : "0.00"}
+                      </span>
+                    </div>
                   </div>
                 </div>
 

@@ -1,130 +1,84 @@
-import React from "react";
-import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import {
-  LayoutDashboard,
-  Users,
-  UserCheck,
-  CreditCard,
-  Package,
-  BarChart3,
-  MessageSquare,
-  LogOut,
-  Menu,
-  X,
-  DollarSign,
-} from "lucide-react";
-import { useState } from "react";
+import React from 'react';
+import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
+import { LogOut, User, Shield } from 'lucide-react';
 
 const AdminLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const menuItems = [
-    { path: "/admin", icon: LayoutDashboard, label: "Dashboard" },
-    { path: "/admin/collectors", icon: Users, label: "Collectors" },
-    { path: "/admin/customers", icon: UserCheck, label: "Customers" },
-    { path: "/admin/accounts", icon: CreditCard, label: "Accounts" },
-    { path: "/admin/payments", icon: DollarSign, label: "Manage Payments" },
-    { path: "/admin/plans", icon: Package, label: "Manage Plans" },
-    { path: "/admin/reports", icon: BarChart3, label: "Reports" },
-    { path: "/admin/feedback", icon: MessageSquare, label: "Feedback" },
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminData');
+    navigate('/admin/login');
+  };
+
+  const adminData = JSON.parse(localStorage.getItem('adminData') || '{}');
+
+  const navItems = [
+    { path: '/admin/dashboard', label: 'Dashboard', icon: Shield },
+    { path: '/admin/customers', label: 'Customers', icon: User },
+    { path: '/admin/collectors', label: 'Collectors', icon: User },
+    { path: '/admin/accounts', label: 'Accounts', icon: User },
+    { path: '/admin/payments', label: 'Payments', icon: User },
+    { path: '/admin/plans', label: 'Plans', icon: User },
+    { path: '/admin/reports', label: 'Reports', icon: User },
+    { path: '/admin/feedback', label: 'Feedback', icon: User },
   ];
 
-  const isActive = (path) => location.pathname === path;
-
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="flex h-screen bg-gray-100">
       {/* Sidebar */}
-      <div
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">PigmyXpress</h1>
-            <p className="text-sm text-gray-600">Admin Panel</p>
-          </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-2 rounded-md text-gray-600 hover:text-gray-900"
-          >
-            <X className="h-5 w-5" />
-          </button>
+      <div className="w-64 bg-blue-800 text-white shadow-lg">
+        <div className="p-6">
+          <h1 className="text-2xl font-bold">PigmyXpress</h1>
+          <p className="text-blue-200 text-sm mt-1">Admin Panel</p>
         </div>
-
-        <nav className="p-4 space-y-2">
-          {menuItems.map((item) => {
+        
+        <nav className="mt-6">
+          {navItems.map((item) => {
             const Icon = item.icon;
+            const isActive = location.pathname === item.path;
             return (
-              <button
+              <Link
                 key={item.path}
-                onClick={() => {
-                  navigate(item.path);
-                  setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                  isActive(item.path)
-                    ? "bg-blue-100 text-blue-700 border-r-2 border-blue-600"
-                    : "text-gray-700 hover:bg-gray-100"
+                to={item.path}
+                className={`flex items-center px-6 py-3 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-blue-900 text-white border-r-4 border-yellow-400'
+                    : 'text-blue-100 hover:bg-blue-700'
                 }`}
               >
                 <Icon className="h-5 w-5 mr-3" />
-                <span className="font-medium">{item.label}</span>
-              </button>
+                {item.label}
+              </Link>
             );
           })}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
-          <button
-            onClick={() => navigate("/")}
-            className="w-full flex items-center px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <LogOut className="h-5 w-5 mr-3" />
-            <span className="font-medium">Back to User View</span>
-          </button>
+        {/* User info and logout */}
+        <div className="absolute bottom-0 w-64 p-4 bg-blue-900">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">{adminData.firstName} {adminData.lastName}</p>
+              <p className="text-xs text-blue-200 capitalize">{adminData.role}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-2 text-blue-200 hover:text-white hover:bg-blue-700 rounded-lg transition-colors"
+              title="Logout"
+            >
+              <LogOut className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col lg:ml-0">
-        {/* Top Bar */}
-        <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
-          <div className="flex items-center justify-between p-4">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-md text-gray-600 hover:text-gray-900"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-
-            <div className="flex items-center space-x-4 ml-auto">
-              <div className="text-right">
-                <p className="text-sm text-gray-600">Welcome back</p>
-                <p className="font-semibold text-gray-900">Admin User</p>
-              </div>
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-medium">A</span>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Page Content */}
-        <main className="flex-1 p-6 overflow-auto">
+      {/* Main content */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-8">
           <Outlet />
-        </main>
+        </div>
       </div>
-
-      {/* Overlay for mobile */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
     </div>
   );
 };
