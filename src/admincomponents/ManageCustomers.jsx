@@ -16,13 +16,11 @@ import {
   createCustomer,
   updateCustomer,
   getCollectors,
-  getPlans,
 } from "../services/api";
 
 const ManageCustomers = () => {
   const [customers, setCustomers] = useState([]);
   const [collectors, setCollectors] = useState([]);
-  const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -40,10 +38,6 @@ const ManageCustomers = () => {
     address: "",
     aadhaarNumber: "",
     panNumber: "",
-    planType: "",
-    dailyAmount: "",
-    depositMode: "cash",
-    collectorId: "",
     nomineeName: "",
     nomineeRelation: "",
     nomineeContact: "",
@@ -62,15 +56,13 @@ const ManageCustomers = () => {
       setLoading(true);
       setError(null);
 
-      const [customersRes, collectorsRes, plansRes] = await Promise.all([
+      const [customersRes, collectorsRes] = await Promise.all([
         getCustomers(),
         getCollectors(),
-        getPlans({ status: "active" }),
       ]);
 
       setCustomers(customersRes.data.data || []);
       setCollectors(collectorsRes.data.data || []);
-      setPlans(plansRes.data.data || []);
     } catch (error) {
       console.error("Error fetching data:", error);
       setError("Failed to load data. Please try again.");
@@ -82,15 +74,6 @@ const ManageCustomers = () => {
   const generateCustomerId = () => {
     const timestamp = Date.now().toString().slice(-6);
     return `CUST${timestamp}`;
-  };
-
-  const handlePlanChange = (planType) => {
-    const selectedPlan = plans.find((plan) => plan.type === planType);
-    setFormData((prev) => ({
-      ...prev,
-      planType,
-      dailyAmount: selectedPlan?.amount || "",
-    }));
   };
 
   const handleSubmit = async (e) => {
@@ -133,11 +116,6 @@ const ManageCustomers = () => {
     if (!formData.address.trim()) errors.address = "Address is required";
     if (!formData.aadhaarNumber.trim() || formData.aadhaarNumber.length !== 12)
       errors.aadhaarNumber = "Valid 12-digit Aadhaar number is required";
-    if (!formData.planType) errors.planType = "Please select a plan";
-    if (!formData.dailyAmount || formData.dailyAmount < 10)
-      errors.dailyAmount = "Daily amount must be at least ₹10";
-    if (!formData.collectorId)
-      errors.collectorId = "Collector assignment is required";
     if (!formData.nomineeName.trim())
       errors.nomineeName = "Nominee name is required";
     if (!formData.nomineeRelation.trim())
@@ -159,10 +137,6 @@ const ManageCustomers = () => {
       address: "",
       aadhaarNumber: "",
       panNumber: "",
-      planType: "",
-      dailyAmount: "",
-      depositMode: "cash",
-      collectorId: "",
       nomineeName: "",
       nomineeRelation: "",
       nomineeContact: "",
@@ -191,10 +165,6 @@ const ManageCustomers = () => {
       address: customer.address,
       aadhaarNumber: customer.aadhaarNumber || "",
       panNumber: customer.panNumber || "",
-      planType: customer.planType || "",
-      dailyAmount: customer.dailyAmount || "",
-      depositMode: customer.depositMode || "cash",
-      collectorId: customer.collectorId?._id || customer.collectorId,
       nomineeName: customer.nomineeName || "",
       nomineeRelation: customer.nomineeRelation || "",
       nomineeContact: customer.nomineeContact || "",
@@ -342,7 +312,7 @@ const ManageCustomers = () => {
                   </div>
                   <div className="flex items-start text-sm text-gray-600">
                     <MapPin className="h-4 w-4 mr-2 mt-0.5" />
-                    <span className="flex-1">{customer.address}</span>
+                    <span className="flex">{customer.address}</span>
                   </div>
                 </div>
 
@@ -599,111 +569,6 @@ const ManageCustomers = () => {
                           {formErrors.address}
                         </p>
                       )}
-                    </div>
-                  </div>
-
-                  {/* Plan Selection */}
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-4">
-                      Pigmy Account Details
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Select Plan *
-                        </label>
-                        <select
-                          required
-                          value={formData.planType}
-                          onChange={(e) => handlePlanChange(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                        >
-                          <option value="">Choose a plan...</option>
-                          {plans.map((plan) => (
-                            <option key={plan._id} value={plan.type}>
-                              {plan.name} - ₹{plan.amount}/{plan.type}
-                            </option>
-                          ))}
-                        </select>
-                        {formErrors.planType && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {formErrors.planType}
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Daily Amount (₹) *
-                        </label>
-                        <input
-                          type="number"
-                          required
-                          min="10"
-                          value={formData.dailyAmount}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              dailyAmount: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                          placeholder="Enter amount"
-                        />
-                        {formErrors.dailyAmount && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {formErrors.dailyAmount}
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Deposit Mode *
-                        </label>
-                        <select
-                          value={formData.depositMode}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              depositMode: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                        >
-                          <option value="cash">Cash</option>
-                          <option value="online">Online</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Assigned Collector *
-                        </label>
-                        <select
-                          required
-                          value={formData.collectorId}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              collectorId: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                        >
-                          <option value="">Select Collector</option>
-                          {collectors.map((collector) => (
-                            <option key={collector._id} value={collector._id}>
-                              {collector.name} - {collector.area}
-                            </option>
-                          ))}
-                        </select>
-                        {formErrors.collectorId && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {formErrors.collectorId}
-                          </p>
-                        )}
-                      </div>
                     </div>
                   </div>
 
