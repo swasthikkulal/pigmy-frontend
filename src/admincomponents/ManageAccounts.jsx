@@ -49,6 +49,7 @@ const ManageAccounts = () => {
     customerId: "",
     collectorId: "",
     planId: "",
+    accountType: "monthly",
     dailyAmount: "",
     startDate: new Date().toISOString().split("T")[0],
     duration: "12",
@@ -56,15 +57,111 @@ const ManageAccounts = () => {
     remarks: "",
   });
 
-  // Helper functions
-  const calculateTotalDays = (durationMonths) => {
-    return parseInt(durationMonths) * 30;
+  // Helper functions for plan objects
+  const getPlanTypeFromPlan = (plan) => {
+    if (!plan) return "monthly";
+    return plan.type || plan.planType || 
+           (plan.name?.toLowerCase().includes('weekly') ? 'weekly' : 
+            plan.name?.toLowerCase().includes('daily') ? 'daily' : 'monthly');
   };
 
-  const calculateMaturityDate = (startDate, durationMonths) => {
+  const getAmountLabelFromPlan = (plan) => {
+    const planType = getPlanTypeFromPlan(plan);
+    return planType === 'weekly' ? 'week' : 'day';
+  };
+
+  const getDurationDisplayFromPlan = (plan) => {
+    if (!plan) return "";
+    
+    const duration = plan.duration || plan.term;
+    const planType = getPlanTypeFromPlan(plan);
+    
+    switch (planType.toLowerCase()) {
+      case "daily":
+        return `${duration} day${duration > 1 ? 's' : ''}`;
+      case "weekly":
+        return `${duration} week${duration > 1 ? 's' : ''}`;
+      case "monthly":
+        return `${duration} month${duration > 1 ? 's' : ''}`;
+      default:
+        return `${duration} months`;
+    }
+  };
+
+  // Helper functions for account objects
+  const getPlanTypeFromAccount = (account) => {
+    if (!account) return "monthly";
+    
+    // Use accountType from your schema
+    if (account.accountType) return account.accountType;
+    if (account.planId?.type) return account.planId.type;
+    
+    // Check plan name for keywords
+    const planName = account.planId?.name?.toLowerCase() || account.planName?.toLowerCase() || "";
+    if (planName.includes('weekly')) return 'weekly';
+    if (planName.includes('daily')) return 'daily';
+    if (planName.includes('monthly')) return 'monthly';
+    
+    // Default fallback
+    return "monthly";
+  };
+
+  const getAmountLabelFromAccount = (account) => {
+    const planType = getPlanTypeFromAccount(account);
+    return planType === 'weekly' ? 'week' : 'day';
+  };
+
+  const getDurationDisplayFromAccount = (account) => {
+    if (!account) return "";
+    
+    const duration = account.duration || account.planId?.duration;
+    const planType = getPlanTypeFromAccount(account);
+    
+    switch (planType.toLowerCase()) {
+      case "daily":
+        return `${duration} day${duration > 1 ? 's' : ''}`;
+      case "weekly":
+        return `${duration} week${duration > 1 ? 's' : ''}`;
+      case "monthly":
+        return `${duration} month${duration > 1 ? 's' : ''}`;
+      default:
+        return `${duration} months`;
+    }
+  };
+
+  // Helper functions
+  const calculateTotalDays = (duration, planType = "monthly") => {
+    const durationValue = parseInt(duration);
+    switch (planType?.toLowerCase()) {
+      case "daily":
+        return durationValue;
+      case "weekly":
+        return durationValue * 7;
+      case "monthly":
+        return durationValue * 30;
+      default:
+        return durationValue * 30; // Default to monthly
+    }
+  };
+
+  const calculateMaturityDate = (startDate, duration, planType = "monthly") => {
     const start = new Date(startDate);
     const maturity = new Date(start);
-    maturity.setMonth(maturity.getMonth() + parseInt(durationMonths));
+    const durationValue = parseInt(duration);
+    
+    switch (planType?.toLowerCase()) {
+      case "daily":
+        maturity.setDate(maturity.getDate() + durationValue);
+        break;
+      case "weekly":
+        maturity.setDate(maturity.getDate() + (durationValue * 7));
+        break;
+      case "monthly":
+        maturity.setMonth(maturity.getMonth() + durationValue);
+        break;
+      default:
+        maturity.setMonth(maturity.getMonth() + durationValue);
+    }
     return maturity.toISOString().split("T")[0];
   };
 
@@ -109,22 +206,51 @@ const ManageAccounts = () => {
       0
     );
 
-    // Calculate missed deposits (simplified logic)
+    // Calculate missed deposits based on plan type
     const startDate = new Date(account.startDate);
     const today = new Date();
-    const daysPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
-    const expectedDeposits = Math.max(0, daysPassed);
+    const planType = getPlanTypeFromAccount(account);
+    
+    let expectedDeposits = 0;
+    switch (planType.toLowerCase()) {
+      case "daily":
+        const daysPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+        expectedDeposits = Math.max(0, daysPassed);
+        break;
+      case "weekly":
+        const weeksPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24 * 7));
+        expectedDeposits = Math.max(0, weeksPassed);
+        break;
+      case "monthly":
+        const monthsPassed = (today.getFullYear() - startDate.getFullYear()) * 12 + 
+                           (today.getMonth() - startDate.getMonth());
+        expectedDeposits = Math.max(0, monthsPassed);
+        break;
+      default:
+        expectedDeposits = 0;
+    }
+
     const missedDeposits = Math.max(
       0,
       expectedDeposits - depositTransactions.length
     );
 
-    // Calculate next due date (tomorrow from last deposit or today if no deposits)
+    // Calculate next due date
     const lastDeposit = depositTransactions[0];
     let nextDueDate = new Date();
     if (lastDeposit?.date) {
       nextDueDate = new Date(lastDeposit.date);
-      nextDueDate.setDate(nextDueDate.getDate() + 1);
+      switch (planType.toLowerCase()) {
+        case "daily":
+          nextDueDate.setDate(nextDueDate.getDate() + 1);
+          break;
+        case "weekly":
+          nextDueDate.setDate(nextDueDate.getDate() + 7);
+          break;
+        case "monthly":
+          nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+          break;
+      }
     }
 
     const totalInterest = (
@@ -155,7 +281,7 @@ const ManageAccounts = () => {
       setLoading(true);
       setError(null);
 
-      // Enhanced mock data with new fields
+      // Enhanced mock data with account types
       const mockAccounts = [
         {
           _id: "1",
@@ -182,7 +308,9 @@ const ManageAccounts = () => {
             amount: 100,
             interestRate: 7.0,
             duration: "12",
+            type: "monthly"
           },
+          accountType: "monthly",
           dailyAmount: 100,
           startDate: "2025-10-22",
           duration: "12",
@@ -218,27 +346,66 @@ const ManageAccounts = () => {
           },
           planId: {
             _id: "plan2",
-            name: "Silver Saver",
-            amount: 50,
+            name: "Weekly Saver Plan",
+            amount: 500,
             interestRate: 6.5,
-            duration: "6",
+            duration: "4",
+            type: "weekly"
           },
-          dailyAmount: 50,
+          accountType: "weekly",
+          dailyAmount: 500,
           startDate: "2025-02-01",
-          duration: "6",
+          duration: "4",
           interestRate: 6.5,
-          totalDays: 180,
-          maturityDate: "2025-08-01",
+          totalDays: 28,
+          maturityDate: "2025-03-01",
           status: "completed",
           maturityStatus: "Paid",
-          withdrawalDate: "2025-08-02",
+          withdrawalDate: "2025-03-02",
           paymentMode: "Bank Transfer",
           paymentReference: "TXN2025A123",
           createdBy: "Admin01",
           createdAt: "2025-02-01",
           updatedBy: "Admin01",
-          updatedAt: "2025-08-02",
+          updatedAt: "2025-03-02",
           remarks: "Regular customer",
+        },
+        {
+          _id: "3",
+          accountNumber: "ACC003",
+          accountId: "ACC003",
+          customerId: {
+            _id: "cust3",
+            name: "Amit Kumar",
+            phone: "9876543212",
+            email: "amit@example.com",
+            address: "Delhi",
+            nomineeName: "Neha Kumar",
+            customerId: "CUST003",
+          },
+          collectorId: {
+            _id: "col1",
+            name: "Ramesh Kumar",
+            area: "Bangalore South",
+            collectorId: "COL002",
+          },
+          planId: {
+            _id: "plan3",
+            name: "Daily Deposits",
+            amount: 50,
+            interestRate: 5.0,
+            duration: "30",
+            type: "daily"
+          },
+          accountType: "daily",
+          dailyAmount: 50,
+          startDate: "2025-01-01",
+          duration: "30",
+          interestRate: 5.0,
+          totalDays: 30,
+          maturityDate: "2025-01-31",
+          status: "active",
+          maturityStatus: "Pending",
         },
       ];
 
@@ -285,20 +452,31 @@ const ManageAccounts = () => {
           amount: 100,
           interestRate: 7.0,
           duration: "12",
+          type: "monthly"
         },
         {
           _id: "plan2",
-          name: "Silver Saver",
-          amount: 50,
+          name: "Weekly Saver Plan",
+          amount: 500,
           interestRate: 6.5,
-          duration: "6",
+          duration: "4",
+          type: "weekly"
         },
         {
           _id: "plan3",
+          name: "Daily Deposits",
+          amount: 50,
+          interestRate: 5.0,
+          duration: "30",
+          type: "daily"
+        },
+        {
+          _id: "plan4",
           name: "Ruby Plan",
           amount: 200,
           interestRate: 10.0,
           duration: "12",
+          type: "monthly"
         },
       ];
 
@@ -351,26 +529,26 @@ const ManageAccounts = () => {
         (col) => col._id === formData.collectorId
       );
 
-      // Prepare data for backend - include both accountNumber and accountId for compatibility
+      // Use accountType from form data
+      const accountType = formData.accountType || getPlanTypeFromPlan(selectedPlan) || "monthly";
+      const duration = selectedPlan?.duration || formData.duration;
+
+      // Prepare data for backend - use accountType to match your schema
       const accountData = {
         accountNumber: formData.accountNumber,
-        accountId: formData.accountNumber, // Use same value for both
+        accountId: formData.accountNumber,
         customerId: formData.customerId,
         collectorId: formData.collectorId,
         planId: formData.planId,
+        accountType: accountType,
         dailyAmount: parseFloat(formData.dailyAmount),
         startDate: formData.startDate,
-        duration: selectedPlan?.duration || formData.duration,
+        duration: duration,
         status: formData.status,
         remarks: formData.remarks,
         interestRate: selectedPlan?.interestRate || 6.5,
-        totalDays: calculateTotalDays(
-          selectedPlan?.duration || formData.duration
-        ),
-        maturityDate: calculateMaturityDate(
-          formData.startDate,
-          selectedPlan?.duration || formData.duration
-        ),
+        totalDays: calculateTotalDays(duration, accountType),
+        maturityDate: calculateMaturityDate(formData.startDate, duration, accountType),
         customerName: selectedCustomer?.name,
         planName: selectedPlan?.name,
         collectorName: selectedCollector?.name,
@@ -418,6 +596,7 @@ const ManageAccounts = () => {
       customerId: "",
       collectorId: "",
       planId: "",
+      accountType: "monthly",
       dailyAmount: "",
       startDate: new Date().toISOString().split("T")[0],
       duration: "12",
@@ -608,6 +787,8 @@ const ManageAccounts = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredAccounts.map((account) => {
                   const stats = getAccountStats(account);
+                  const amountLabel = getAmountLabelFromAccount(account);
+                  
                   return (
                     <tr key={account._id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -615,12 +796,10 @@ const ManageAccounts = () => {
                           {account.accountNumber || account.accountId}
                         </div>
                         <div className="text-sm text-gray-500">
-                          Start:{" "}
-                          {new Date(account.startDate).toLocaleDateString()}
+                          Start: {new Date(account.startDate).toLocaleDateString()}
                         </div>
                         <div className="text-xs text-gray-400">
-                          Matures:{" "}
-                          {new Date(stats.maturityDate).toLocaleDateString()}
+                          Matures: {new Date(stats.maturityDate).toLocaleDateString()}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -651,10 +830,10 @@ const ManageAccounts = () => {
                           {account.planId?.name}
                         </div>
                         <div className="text-sm text-gray-500">
-                          ₹{account.dailyAmount}/day
+                          ₹{account.dailyAmount}/{amountLabel}
                         </div>
                         <div className="text-xs text-gray-400">
-                          {account.interestRate}% • {account.duration} months
+                          {account.interestRate}% • {getDurationDisplayFromAccount(account)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -793,9 +972,12 @@ const ManageAccounts = () => {
                         const selectedPlan = plans.find(
                           (plan) => plan._id === e.target.value
                         );
+                        const planType = getPlanTypeFromPlan(selectedPlan);
+                        
                         setFormData({
                           ...formData,
                           planId: e.target.value,
+                          accountType: planType,
                           dailyAmount: selectedPlan?.amount || "",
                           duration: selectedPlan?.duration || "12",
                         });
@@ -805,8 +987,7 @@ const ManageAccounts = () => {
                       <option value="">Select Plan</option>
                       {plans.map((plan) => (
                         <option key={plan._id} value={plan._id}>
-                          {plan.name} - ₹{plan.amount}/day - {plan.interestRate}
-                          %
+                          {plan.name} - ₹{plan.amount}/{getAmountLabelFromPlan(plan)} - {plan.interestRate}% - {getDurationDisplayFromPlan(plan)}
                         </option>
                       ))}
                     </select>
@@ -814,7 +995,7 @@ const ManageAccounts = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Daily Amount (₹)
+                      {formData.accountType === 'weekly' ? 'Weekly Amount (₹)' : 'Daily Amount (₹)'}
                     </label>
                     <input
                       type="number"
@@ -829,7 +1010,7 @@ const ManageAccounts = () => {
                         })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter daily amount"
+                      placeholder={`Enter ${formData.accountType === 'weekly' ? 'weekly' : 'daily'} amount`}
                     />
                   </div>
 
@@ -930,6 +1111,14 @@ const ManageAccounts = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm font-medium text-gray-600">
+                          Plan Type:
+                        </span>
+                        <span className="text-sm text-gray-900 capitalize">
+                          {getPlanTypeFromAccount(selectedAccount)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">
                           Customer ID:
                         </span>
                         <span className="text-sm text-gray-900">
@@ -955,7 +1144,7 @@ const ManageAccounts = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm font-medium text-gray-600">
-                          Daily Amount:
+                          {getAmountLabelFromAccount(selectedAccount) === 'week' ? 'Weekly Amount:' : 'Daily Amount:'}
                         </span>
                         <span className="text-sm text-gray-900">
                           ₹{selectedAccount.dailyAmount}
@@ -966,7 +1155,7 @@ const ManageAccounts = () => {
                           Duration:
                         </span>
                         <span className="text-sm text-gray-900">
-                          {selectedAccount.duration} Months
+                          {getDurationDisplayFromAccount(selectedAccount)}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -989,6 +1178,9 @@ const ManageAccounts = () => {
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       {(() => {
                         const stats = getAccountStats(selectedAccount);
+                        const planType = getPlanTypeFromAccount(selectedAccount);
+                        const depositUnit = planType === 'weekly' ? 'weeks' : 'days';
+                        
                         return (
                           <>
                             <div className="flex justify-between">
@@ -1004,7 +1196,7 @@ const ManageAccounts = () => {
                                 Missed Deposits:
                               </span>
                               <span className="text-sm text-gray-900">
-                                {stats.missedDeposits} days
+                                {stats.missedDeposits} {depositUnit}
                               </span>
                             </div>
                             <div className="flex justify-between">
