@@ -109,15 +109,15 @@ const ManageCustomers = () => {
       } else {
         const response = await createCustomer(customerData);
         alert("Customer created successfully!");
-        
+
         // Show credentials to admin
         setCredentials({
           email: formData.email,
           password: formData.customerId,
-          customerId: formData.customerId
+          customerId: formData.customerId,
         });
         setShowCredentials(true);
-        
+
         setShowModal(false);
         resetForm();
       }
@@ -130,10 +130,16 @@ const ManageCustomers = () => {
   };
 
   const handleResetPassword = async (customerId) => {
-    if (window.confirm("Reset password to Customer ID? This will allow the customer to login again using their Customer ID as password.")) {
+    if (
+      window.confirm(
+        "Reset password to Customer ID? This will allow the customer to login again using their Customer ID as password."
+      )
+    ) {
       try {
         await resetCustomerPassword(customerId);
-        alert("Password reset successfully! Customer can now login using their Customer ID as password.");
+        alert(
+          "Password reset successfully! Customer can now login using their Customer ID as password."
+        );
       } catch (error) {
         alert(error.response?.data?.message || "Error resetting password");
       }
@@ -349,11 +355,11 @@ const ManageCustomers = () => {
                   </div>
                   <div className="flex items-start text-sm text-gray-600">
                     <MapPin className="h-4 w-4 mr-2 mt-0.5" />
-                    <span className="flex-1">{customer.address}</span>
+                    <span className="flex">{customer.address}</span>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                {/* <div className="flex items-center justify-between pt-4 border-t border-gray-200">
                   <div>
                     <p className="text-sm text-gray-600">Collector</p>
                     <p className="text-sm font-medium text-gray-900">
@@ -375,7 +381,7 @@ const ManageCustomers = () => {
                       <Edit className="h-4 w-4 inline" />
                     </button>
                   </div>
-                </div>
+                </div> */}
               </div>
             ))}
           </div>
@@ -769,39 +775,56 @@ const ManageCustomers = () => {
                     onClick={() => setShowCredentials(false)}
                     className="text-gray-400 hover:text-gray-600"
                   >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-6 w-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
-                
+
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
                   <div className="flex items-center mb-2">
                     <Key className="h-5 w-5 text-yellow-600 mr-2" />
-                    <span className="font-medium text-yellow-800">Share these credentials with the customer:</span>
+                    <span className="font-medium text-yellow-800">
+                      Share these credentials with the customer:
+                    </span>
                   </div>
-                  
+
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Email (Username)</label>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Email (Username)
+                      </label>
                       <div className="mt-1 p-2 bg-white border border-gray-300 rounded-lg font-mono text-sm">
                         {credentials.email}
                       </div>
                     </div>
-                    
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Password</label>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Password
+                      </label>
                       <div className="mt-1 p-2 bg-white border border-gray-300 rounded-lg font-mono text-sm">
                         {credentials.customerId}
                       </div>
                     </div>
                   </div>
-                  
+
                   <p className="text-xs text-yellow-700 mt-3">
-                    💡 The customer should use their Customer ID as password when logging in.
+                    💡 The customer should use their Customer ID as password
+                    when logging in.
                   </p>
                 </div>
-                
+
                 <button
                   onClick={() => setShowCredentials(false)}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors"

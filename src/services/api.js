@@ -82,6 +82,14 @@ export const logoutCustomer = () => {
     return Promise.resolve();
 };
 
+// ==================== CUSTOMER PLANS API ====================
+
+export const getCustomerPlans = () => API.get('/customer/plans');
+export const getCustomerPlanDetails = (planId) => API.get(`/customer/plans/${planId}`);
+export const makePlanPayment = (paymentData) => API.post('/customer/payments', paymentData);
+export const getCustomerTransactions = (params = {}) => API.get('/customer/transactions', { params });
+export const getCustomerPaymentHistory = () => API.get('/customer/payments/history');
+
 // ==================== COLLECTORS API ====================
 
 export const getCollectors = (params = {}) => API.get('/collectors', { params });

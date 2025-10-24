@@ -14,12 +14,12 @@ const Login = () => {
   const navigate = useNavigate();
 
   // Check if user is already logged in
-  useEffect(() => {
-    const token = localStorage.getItem("adminToken");
-    if (token) {
-      navigate("/dashboard");
-    }
-  }, [navigate]);
+  // useEffect(() => {
+  //   const token = localStorage.getItem("adminToken");
+  //   if (token) {
+  //     navigate("/dashboard");
+  //   }
+  // }, [navigate]);
 
   const handleChange = (e) => {
     setFormData({
