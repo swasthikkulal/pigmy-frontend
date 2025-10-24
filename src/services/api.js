@@ -7,21 +7,42 @@ const API = axios.create({
 // Request interceptor to add appropriate auth token
 API.interceptors.request.use(
     (config) => {
-        // Check if it's a customer route
-        const isCustomerRoute = config.url.includes('/auth/customer') || 
-                               config.url.includes('/customer/');
+        // Define customer route patterns
+        const customerRoutePatterns = [
+            '/auth/customer',
+            '/customer/',
+            '/payments/process',
+            '/payments/account/',
+            '/payments/customer/my-payments',
+            '/accounts/customer/',
+            '/transactions/customer/'
+        ];
+        
+        // Check if current URL matches any customer route pattern
+        const isCustomerRoute = customerRoutePatterns.some(pattern => 
+            config.url.includes(pattern)
+        );
         
         if (isCustomerRoute) {
             // Use customer token for customer routes
             const customerToken = localStorage.getItem('customerToken');
             if (customerToken) {
                 config.headers.Authorization = `Bearer ${customerToken}`;
+                console.log('🔐 Using customer token for:', config.url);
+            } else {
+                console.warn('⚠️ No customer token found for customer route:', config.url);
+                // Redirect to login if not already on login page
+                if (!config.url.includes('/auth/customer/login')) {
+                    window.location.href = '/auth';
+                    return Promise.reject(new Error('No customer token found'));
+                }
             }
         } else {
             // Use admin token for all other routes
             const adminToken = localStorage.getItem('adminToken');
             if (adminToken) {
                 config.headers.Authorization = `Bearer ${adminToken}`;
+                console.log('👨‍💼 Using admin token for:', config.url);
             }
         }
         
@@ -32,20 +53,20 @@ API.interceptors.request.use(
     }
 );
 
-// Response interceptor to handle token expiration - UPDATED PATHS
+// Response interceptor to handle token expiration
 API.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
             // Check if it's a customer route
             const isCustomerRoute = error.config.url.includes('/auth/customer') || 
-                                   error.config.url.includes('/customer/');
+                                   error.config.url.includes('/customer/') ||
+                                   error.config.url.includes('/payments/process');
             
             if (isCustomerRoute) {
                 // Clear customer tokens and redirect to customer login
                 localStorage.removeItem('customerToken');
                 localStorage.removeItem('customerData');
-                // Updated to redirect to /auth instead of /customer/login
                 if (window.location.pathname.startsWith('/customer') || window.location.pathname === '/auth') {
                     window.location.href = '/auth';
                 }
@@ -121,6 +142,7 @@ export const deleteAccount = (id) => API.delete(`/accounts/${id}`);
 export const getAccountStats = () => API.get('/accounts/stats/overview');
 export const getAccountsByCustomer = (customerId) => API.get(`/accounts/customer/${customerId}`);
 export const getAccountByNumber = (accountNumber) => API.get(`/accounts/number/${accountNumber}`);
+export const updateAccountBalance = (accountId, balanceData) => API.patch(`/accounts/${accountId}/balance`, balanceData);
 
 // ==================== TRANSACTIONS API ====================
 
@@ -157,6 +179,14 @@ export const getPaymentStats = () => API.get('/payments/stats/overview');
 export const getPaymentsByCustomer = (customerId) => API.get(`/payments/customer/${customerId}`);
 export const getPaymentsByCollector = (collectorId) => API.get(`/payments/collector/${collectorId}`);
 export const processBulkPayments = (paymentsData) => API.post('/payments/bulk', paymentsData);
+
+// UPDATED PAYMENT PROCESSING ENDPOINTS - Now properly authenticated
+export const processPayment = (paymentData) => API.post('/payments/process', paymentData);
+export const updatePaymentStatus = (paymentId, statusData) => API.patch(`/payments/${paymentId}/status`, statusData);
+export const getPaymentHistory = (accountId) => API.get(`/payments/account/${accountId}/history`);
+export const verifyPayment = (paymentId, verificationData) => API.post(`/payments/${paymentId}/verify`, verificationData);
+export const getPendingPayments = (params = {}) => API.get('/payments/pending', { params });
+export const getMyPayments = () => API.get('/payments/customer/my-payments');
 
 // ==================== REPORTS API ====================
 

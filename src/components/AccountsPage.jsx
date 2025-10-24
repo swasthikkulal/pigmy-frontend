@@ -14,7 +14,12 @@ import {
   XCircle,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { getAccountsByCustomer, getCustomerProfile } from "../services/api";
+import { 
+  getAccountsByCustomer, 
+  getCustomerProfile, 
+  getPaymentHistory, 
+  processPayment 
+} from "../services/api";
 
 const AccountsPage = () => {
   const navigate = useNavigate();
@@ -31,6 +36,7 @@ const AccountsPage = () => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
   const [isCustomPayment, setIsCustomPayment] = useState(false);
+  const [processingPayment, setProcessingPayment] = useState(false);
 
   useEffect(() => {
     loadCustomerAccounts();
@@ -56,28 +62,22 @@ const AccountsPage = () => {
     } catch (error) {
       console.error("Error loading customer accounts:", error);
       setError("Failed to load your accounts. Please try again.");
-      // Fallback to mock data for demonstration
-      const mockAccounts = getMockAccounts();
-      setAccounts(mockAccounts);
-      calculatePendingPayments(mockAccounts);
     } finally {
       setLoading(false);
     }
   };
 
-  // Fixed: Calculate pending payments based on plan type and transaction history
+  // Calculate pending payments based on plan type and transaction history
   const calculatePendingPayments = (accountsData) => {
     const pending = {};
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to start of day
+    today.setHours(0, 0, 0, 0);
 
     accountsData.forEach((account) => {
       const planType = getPlanTypeFromAccount(account);
       const transactions = account.transactions || [];
-      const openingDate = new Date(
-        account.openingDate || account.startDate || account.createdAt
-      );
-      openingDate.setHours(0, 0, 0, 0); // Normalize to start of day
+      const openingDate = new Date(account.openingDate);
+      openingDate.setHours(0, 0, 0, 0);
 
       let pendingAmount = 0;
       let pendingCount = 0;
@@ -93,13 +93,9 @@ const AccountsPage = () => {
       }
 
       if (planType === "daily") {
-        // For daily plans, check each day from opening date to today
         const checkDate = new Date(openingDate);
         
         while (checkDate < today) {
-          const dateString = checkDate.toDateString();
-          
-          // Check if there's a transaction for this specific date
           const hasTransactionForDate = transactions.some((transaction) => {
             const transactionDate = new Date(transaction.date);
             transactionDate.setHours(0, 0, 0, 0);
@@ -111,23 +107,20 @@ const AccountsPage = () => {
             pendingCount += 1;
           }
 
-          // Move to next day
           checkDate.setDate(checkDate.getDate() + 1);
         }
 
       } else if (planType === "weekly") {
-        // For weekly plans, check each week from opening date to current week
         const checkDate = new Date(openingDate);
         const currentWeekStart = new Date(today);
-        currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay()); // Start of current week (Sunday)
+        currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
 
         while (checkDate < currentWeekStart) {
           const weekStart = new Date(checkDate);
-          weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week (Sunday)
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
           const weekEnd = new Date(weekStart);
-          weekEnd.setDate(weekEnd.getDate() + 6); // End of week (Saturday)
+          weekEnd.setDate(weekEnd.getDate() + 6);
 
-          // Check if there's any transaction in this week
           const hasTransactionInWeek = transactions.some((transaction) => {
             const transactionDate = new Date(transaction.date);
             transactionDate.setHours(0, 0, 0, 0);
@@ -139,11 +132,9 @@ const AccountsPage = () => {
             pendingCount += 1;
           }
 
-          // Move to next week
           checkDate.setDate(checkDate.getDate() + 7);
         }
 
-        // Also check current week if account was opened before current week
         if (openingDate < currentWeekStart) {
           const hasTransactionInCurrentWeek = transactions.some((transaction) => {
             const transactionDate = new Date(transaction.date);
@@ -158,7 +149,6 @@ const AccountsPage = () => {
         }
 
       } else if (planType === "monthly") {
-        // For monthly plans, check each month from opening date to current month
         const checkDate = new Date(openingDate);
         const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
@@ -167,7 +157,6 @@ const AccountsPage = () => {
           const monthEnd = new Date(checkDate.getFullYear(), checkDate.getMonth() + 1, 0);
           monthEnd.setHours(23, 59, 59, 999);
 
-          // Check if there's any transaction in this month
           const hasTransactionInMonth = transactions.some((transaction) => {
             const transactionDate = new Date(transaction.date);
             return transactionDate >= monthStart && transactionDate <= monthEnd;
@@ -178,11 +167,9 @@ const AccountsPage = () => {
             pendingCount += 1;
           }
 
-          // Move to next month
           checkDate.setMonth(checkDate.getMonth() + 1);
         }
 
-        // Also check current month if account was opened before current month
         if (openingDate < currentMonthStart) {
           const currentMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
           currentMonthEnd.setHours(23, 59, 59, 999);
@@ -209,24 +196,17 @@ const AccountsPage = () => {
     setPendingPayments(pending);
   };
 
-  // Helper functions for account objects
+  // Helper functions
   const getPlanTypeFromAccount = (account) => {
     if (!account) return "monthly";
-
-    // Use accountType from your schema
     if (account.accountType) return account.accountType;
     if (account.planId?.type) return account.planId.type;
-
-    // Check plan name for keywords
-    const planName =
-      account.planId?.name?.toLowerCase() ||
-      account.planName?.toLowerCase() ||
-      "";
+    
+    const planName = account.planId?.name?.toLowerCase() || account.planName?.toLowerCase() || "";
     if (planName.includes("weekly")) return "weekly";
     if (planName.includes("daily")) return "daily";
     if (planName.includes("monthly")) return "monthly";
-
-    // Default fallback
+    
     return "monthly";
   };
 
@@ -237,182 +217,29 @@ const AccountsPage = () => {
 
   const getDurationDisplayFromAccount = (account) => {
     if (!account) return "";
-
     const duration = account.duration || account.planId?.duration;
     const planType = getPlanTypeFromAccount(account);
 
     switch (planType.toLowerCase()) {
-      case "daily":
-        return `${duration} day${duration > 1 ? "s" : ""}`;
-      case "weekly":
-        return `${duration} week${duration > 1 ? "s" : ""}`;
-      case "monthly":
-        return `${duration} month${duration > 1 ? "s" : ""}`;
-      default:
-        return `${duration} months`;
+      case "daily": return `${duration} day${duration > 1 ? "s" : ""}`;
+      case "weekly": return `${duration} week${duration > 1 ? "s" : ""}`;
+      case "monthly": return `${duration} month${duration > 1 ? "s" : ""}`;
+      default: return `${duration} months`;
     }
-  };
-
-  // Mock data fallback - remove this in production
-  const getMockAccounts = () => {
-    const today = new Date();
-    const oneWeekAgo = new Date(today);
-    oneWeekAgo.setDate(today.getDate() - 7);
-    const twoWeeksAgo = new Date(today);
-    twoWeeksAgo.setDate(today.getDate() - 14);
-
-    return [
-      {
-        _id: "1",
-        accountNumber: "ACC-001-2024",
-        accountId: "ACC-001-2024",
-        type: "Savings Account",
-        accountType: "monthly",
-        totalBalance: 45000,
-        status: "active",
-        planId: {
-          name: "Basic Savings Plan",
-          interestRate: 3.5,
-          duration: 12,
-          type: "monthly",
-        },
-        openingDate: "2024-01-15",
-        customerId: {
-          name: customer?.name || "Current Customer",
-          customerId: customer?.customerId || "CUST001",
-        },
-        collectorId: {
-          name: "Ramesh Kumar",
-          area: "Bangalore South",
-          phone: "9876543210",
-        },
-        dailyAmount: 100,
-        maturityDate: "2025-01-15",
-        transactions: [
-          {
-            date: "2024-10-20",
-            amount: 100,
-            type: "deposit",
-          },
-        ],
-      },
-      {
-        _id: "2",
-        accountNumber: "PIGMY-002-2024",
-        accountId: "PIGMY-002-2024",
-        type: "Pigmy Deposit",
-        accountType: "weekly",
-        totalBalance: 12500,
-        status: "active",
-        planId: {
-          name: "Weekly Deposit Plan",
-          interestRate: 6.2,
-          duration: 4,
-          type: "weekly",
-        },
-        openingDate: twoWeeksAgo.toISOString().split('T')[0], // Account opened 2 weeks ago
-        customerId: {
-          name: customer?.name || "Current Customer",
-          customerId: customer?.customerId || "CUST001",
-        },
-        collectorId: {
-          name: "Suresh Patel",
-          area: "Mumbai Central",
-          phone: "9876543211",
-        },
-        dailyAmount: 500,
-        maturityDate: "2024-03-01",
-        transactions: [
-          {
-            date: oneWeekAgo.toISOString().split('T')[0], // Only one payment 1 week ago
-            amount: 500,
-            type: "deposit",
-          },
-        ],
-      },
-      {
-        _id: "3",
-        accountNumber: "DAILY-003-2024",
-        accountId: "DAILY-003-2024",
-        type: "Daily Deposit",
-        accountType: "daily",
-        totalBalance: 7500,
-        status: "active",
-        planId: {
-          name: "Daily Savings",
-          interestRate: 5.0,
-          duration: 30,
-          type: "daily",
-        },
-        openingDate: "2024-10-20", // Account opened 4 days ago
-        customerId: {
-          name: customer?.name || "Current Customer",
-          customerId: customer?.customerId || "CUST001",
-        },
-        collectorId: {
-          name: "Priya Sharma",
-          area: "Delhi North",
-          phone: "9876543212",
-        },
-        dailyAmount: 50,
-        maturityDate: "2024-03-31",
-        transactions: [
-          {
-            date: "2024-10-21", // Only one payment 3 days ago
-            amount: 50,
-            type: "deposit",
-          },
-        ],
-      },
-    ];
   };
 
   const generateReferenceNumber = () => {
     return "REF-" + Math.random().toString(36).substr(2, 9).toUpperCase();
   };
 
-  // Mock function to simulate fetching payment history
   const loadPaymentHistory = async (accountId) => {
-    // In real implementation, you would fetch this from your API
-    const mockPayments = [
-      {
-        _id: "1",
-        accountId: accountId,
-        amount: 100,
-        paymentMethod: "cash",
-        status: "completed",
-        referenceNumber: "REF-ABC123",
-        date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        verifiedBy: "Ramesh Kumar",
-        verifiedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        type: "deposit"
-      },
-      {
-        _id: "2",
-        accountId: accountId,
-        amount: 100,
-        paymentMethod: "cash",
-        status: "pending",
-        referenceNumber: "REF-XYZ789",
-        date: new Date().toISOString(),
-        verifiedBy: null,
-        verifiedAt: null,
-        type: "deposit"
-      },
-      {
-        _id: "3",
-        accountId: accountId,
-        amount: 500,
-        paymentMethod: "online",
-        status: "completed",
-        referenceNumber: "REF-ONLINE123",
-        date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        verifiedBy: "System",
-        verifiedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        type: "deposit"
-      }
-    ];
-    setPaymentHistory(mockPayments);
+    try {
+      const response = await getPaymentHistory(accountId);
+      setPaymentHistory(response.data.data || []);
+    } catch (error) {
+      console.error("Error loading payment history:", error);
+      setPaymentHistory([]);
+    }
   };
 
   const handlePayment = (account) => {
@@ -429,18 +256,15 @@ const AccountsPage = () => {
       } instead of the regular ${planType} amount of ₹${account.dailyAmount}?`;
 
       if (window.confirm(confirmMessage)) {
-        // User wants to pay pending amount
         setSelectedAccount({
           ...account,
           pendingAmount: pending.amount,
           isPendingPayment: true,
         });
       } else {
-        // User wants to pay regular amount
         setSelectedAccount(account);
       }
     } else {
-      // No pending payments, proceed with regular amount
       setSelectedAccount(account);
     }
 
@@ -450,8 +274,10 @@ const AccountsPage = () => {
     setShowPaymentModal(true);
   };
 
-  const processPayment = async () => {
+  const handleProcessPayment = async () => {
     try {
+      setProcessingPayment(true);
+
       // Validate reference number for online payments
       if (paymentMethod === "online" && !referenceNumber.trim()) {
         alert("Please enter a reference number for online payment");
@@ -463,7 +289,6 @@ const AccountsPage = () => {
       let remainingPendingAmount = 0;
 
       if (isCustomPayment && customAmount) {
-        // Validate custom amount
         const minAmount = selectedAccount.dailyAmount || 0;
         const maxAmount = selectedAccount.pendingAmount || selectedAccount.dailyAmount || 0;
         
@@ -489,62 +314,58 @@ const AccountsPage = () => {
       // Determine payment status based on payment method
       const paymentStatus = paymentMethod === "cash" ? "pending" : "completed";
 
-      // Simulate payment processing
-      console.log(
-        "Processing payment for account:",
-        selectedAccount.accountNumber
-      );
-      console.log("Payment method:", paymentMethod);
-      console.log("Reference:", referenceNumber);
-      console.log("Amount:", paymentAmount);
-      console.log("Is pending payment:", isPendingPayment);
-      console.log("Payment status:", paymentStatus);
-      console.log("Is partial payment:", isPartialPayment);
-      console.log("Remaining pending amount:", remainingPendingAmount);
+      // Prepare payment data for backend
+      const paymentData = {
+        accountId: selectedAccount._id,
+        customerId: customer._id,
+        amount: paymentAmount,
+        paymentMethod: paymentMethod,
+        referenceNumber: referenceNumber,
+        status: paymentStatus,
+        isPendingPayment: isPendingPayment,
+        isPartialPayment: isPartialPayment,
+        remainingPendingAmount: remainingPendingAmount,
+        type: "deposit"
+      };
 
-      // In real implementation, call your payment API here
-      // This would be something like:
-      // await processPaymentAPI({
-      //   accountId: selectedAccount._id,
-      //   amount: paymentAmount,
-      //   paymentMethod,
-      //   referenceNumber,
-      //   status: paymentStatus,
-      //   isPendingPayment,
-      //   isPartialPayment,
-      //   remainingPendingAmount
-      // });
-
-      let alertMessage = "";
-      if (paymentMethod === "cash") {
-        if (isPartialPayment) {
-          alertMessage = `Partial cash payment recorded as PENDING!\nReference: ${referenceNumber}\nAmount Paid: ₹${paymentAmount}\nRemaining Pending: ₹${remainingPendingAmount}\nStatus: ${paymentStatus}\n\nOur collector will verify and mark this payment as completed.`;
+      // Call backend API to process payment
+      const response = await processPayment(paymentData);
+      
+      if (response.data.success) {
+        let alertMessage = "";
+        if (paymentMethod === "cash") {
+          if (isPartialPayment) {
+            alertMessage = `Partial cash payment recorded as PENDING!\nReference: ${referenceNumber}\nAmount Paid: ₹${paymentAmount}\nRemaining Pending: ₹${remainingPendingAmount}\nStatus: ${paymentStatus}\n\nOur collector will verify and mark this payment as completed.`;
+          } else {
+            alertMessage = `Cash payment recorded as PENDING!\nReference: ${referenceNumber}\nAmount: ₹${paymentAmount}\nStatus: ${paymentStatus}\n\nOur collector will verify and mark this payment as completed.`;
+          }
         } else {
-          alertMessage = `Cash payment recorded as PENDING!\nReference: ${referenceNumber}\nAmount: ₹${paymentAmount}\nStatus: ${paymentStatus}\n\nOur collector will verify and mark this payment as completed.`;
+          if (isPartialPayment) {
+            alertMessage = `Partial online payment completed successfully!\nReference: ${referenceNumber}\nAmount Paid: ₹${paymentAmount}\nRemaining Pending: ₹${remainingPendingAmount}\nStatus: ${paymentStatus}`;
+          } else {
+            alertMessage = `Online payment completed successfully!\nReference: ${referenceNumber}\nAmount: ₹${paymentAmount}\nStatus: ${paymentStatus}`;
+          }
         }
-      } else {
-        if (isPartialPayment) {
-          alertMessage = `Partial online payment completed successfully!\nReference: ${referenceNumber}\nAmount Paid: ₹${paymentAmount}\nRemaining Pending: ₹${remainingPendingAmount}\nStatus: ${paymentStatus}`;
-        } else {
-          alertMessage = `Online payment completed successfully!\nReference: ${referenceNumber}\nAmount: ₹${paymentAmount}\nStatus: ${paymentStatus}`;
-        }
-      }
 
-      alert(alertMessage);
+        alert(alertMessage);
 
-      setShowPaymentModal(false);
-      setSelectedAccount(null);
-      setReferenceNumber("");
-      setCustomAmount("");
-      setIsCustomPayment(false);
+        // Close modal and reset states
+        setShowPaymentModal(false);
+        setSelectedAccount(null);
+        setReferenceNumber("");
+        setCustomAmount("");
+        setIsCustomPayment(false);
 
-      // Reload accounts to reflect updated balance (if payment is completed)
-      if (paymentStatus === "completed") {
+        // Reload accounts to reflect updated balance
         loadCustomerAccounts();
+      } else {
+        throw new Error("Payment processing failed");
       }
     } catch (error) {
       console.error("Payment error:", error);
       alert("Payment failed. Please try again.");
+    } finally {
+      setProcessingPayment(false);
     }
   };
 
@@ -556,61 +377,39 @@ const AccountsPage = () => {
 
   const getPaymentStatusBadge = (status) => {
     switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'failed':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+      case 'completed': return 'bg-green-100 text-green-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'failed': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getPaymentStatusIcon = (status) => {
     switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4" />;
-      case 'pending':
-        return <Clock className="h-4 w-4" />;
-      case 'failed':
-        return <XCircle className="h-4 w-4" />;
-      default:
-        return <Clock className="h-4 w-4" />;
+      case 'completed': return <CheckCircle className="h-4 w-4" />;
+      case 'pending': return <Clock className="h-4 w-4" />;
+      case 'failed': return <XCircle className="h-4 w-4" />;
+      default: return <Clock className="h-4 w-4" />;
     }
-  };
-
-  const handleLoginRedirect = () => {
-    navigate("/auth");
   };
 
   const getAccountTypeColor = (type) => {
     switch (type?.toLowerCase()) {
-      case "savings":
-        return "bg-blue-100 text-blue-800";
-      case "pigmy":
-        return "bg-green-100 text-green-800";
-      case "fixed deposit":
-        return "bg-purple-100 text-purple-800";
-      case "daily deposit":
-        return "bg-orange-100 text-orange-800";
-      default:
-        return "bg-gray-100 text-gray-800";
+      case "savings": return "bg-blue-100 text-blue-800";
+      case "pigmy": return "bg-green-100 text-green-800";
+      case "fixed deposit": return "bg-purple-100 text-purple-800";
+      case "daily deposit": return "bg-orange-100 text-orange-800";
+      default: return "bg-gray-100 text-gray-800";
     }
   };
 
   const getAccountTypeIcon = (type) => {
     switch (type?.toLowerCase()) {
-      case "savings":
-        return <Wallet className="h-5 w-5" />;
-      case "pigmy":
-        return <TrendingUp className="h-5 w-5" />;
-      case "fixed deposit":
-        return <Calendar className="h-5 w-5" />;
-      case "daily deposit":
-        return <DollarSign className="h-5 w-5" />;
-      default:
-        return <Wallet className="h-5 w-5" />;
+      case "savings": return <Wallet className="h-5 w-5" />;
+      case "pigmy": return <TrendingUp className="h-5 w-5" />;
+      case "fixed deposit": return <Calendar className="h-5 w-5" />;
+      case "daily deposit": return <DollarSign className="h-5 w-5" />;
+      default: return <Wallet className="h-5 w-5" />;
     }
   };
 
@@ -619,12 +418,11 @@ const AccountsPage = () => {
     return Math.min((balance / targetAmount) * 100, 100);
   };
 
+  // Payment Modal Component
   const PaymentModal = () => {
     if (!showPaymentModal) return null;
 
-    const amountLabel = selectedAccount
-      ? getAmountLabelFromAccount(selectedAccount)
-      : "day";
+    const amountLabel = getAmountLabelFromAccount(selectedAccount);
     const regularAmount = selectedAccount?.dailyAmount || 0;
     const pendingAmount = selectedAccount?.pendingAmount || regularAmount;
     const isPendingPayment = selectedAccount?.isPendingPayment;
@@ -647,12 +445,16 @@ const AccountsPage = () => {
           {/* Scrollable Content */}
           <div className="flex-1 overflow-y-auto">
             <div className="p-6 space-y-4">
+              {/* Account Info */}
               <div>
                 <p className="text-sm text-gray-600">Account</p>
                 <p className="font-semibold">
                   {selectedAccount?.accountNumber} - {selectedAccount?.type}
                 </p>
                 <p className="text-sm text-gray-600 mt-1">
+                  Current Balance: <span className="font-semibold">₹{selectedAccount?.totalBalance?.toLocaleString() || "0"}</span>
+                </p>
+                <p className="text-sm text-gray-600">
                   {isPendingPayment
                     ? "Pending Amount"
                     : amountLabel === "week"
@@ -666,11 +468,9 @@ const AccountsPage = () => {
                       <AlertTriangle className="h-4 w-4 text-yellow-600 mr-2" />
                       <p className="text-sm text-yellow-800">
                         This includes{" "}
-                        {pendingPayments[selectedAccount?._id]?.count || 0}{" "}
+                        {pendingPayments[selectedAccount?._id]?.count || 0}{ " "}
                         pending {getPlanTypeFromAccount(selectedAccount)} payment
-                        {pendingPayments[selectedAccount?._id]?.count > 1
-                          ? "s"
-                          : ""}
+                        {pendingPayments[selectedAccount?._id]?.count > 1 ? "s" : ""}
                       </p>
                     </div>
                   </div>
@@ -757,6 +557,7 @@ const AccountsPage = () => {
                 </div>
               </div>
 
+              {/* Payment Method */}
               <div>
                 <p className="text-sm text-gray-600 mb-2">Payment Method</p>
                 <div className="flex gap-2">
@@ -785,6 +586,7 @@ const AccountsPage = () => {
                 </div>
               </div>
 
+              {/* Online Payment Details */}
               {paymentMethod === "online" && (
                 <div className="space-y-4">
                   <div className="text-center">
@@ -796,7 +598,6 @@ const AccountsPage = () => {
                     </div>
                   </div>
 
-                  {/* Reference Number Input for Online Payment */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Reference Number *
@@ -810,9 +611,7 @@ const AccountsPage = () => {
                         className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                       />
                       <button
-                        onClick={() =>
-                          setReferenceNumber(generateReferenceNumber())
-                        }
+                        onClick={() => setReferenceNumber(generateReferenceNumber())}
                         className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md text-sm border border-gray-300 whitespace-nowrap"
                       >
                         Generate
@@ -829,9 +628,7 @@ const AccountsPage = () => {
                     </p>
                     <ul className="text-xs text-blue-700 mt-1 list-disc list-inside space-y-1">
                       <li>Scan the QR code above to make payment</li>
-                      <li>
-                        Enter the UTR/Reference number provided by your bank
-                      </li>
+                      <li>Enter the UTR/Reference number provided by your bank</li>
                       <li>Payment will be verified automatically</li>
                       <li>Keep the transaction receipt for reference</li>
                     </ul>
@@ -839,6 +636,7 @@ const AccountsPage = () => {
                 </div>
               )}
 
+              {/* Cash Payment Details */}
               {paymentMethod === "cash" && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <div className="flex items-start mb-2">
@@ -887,26 +685,35 @@ const AccountsPage = () => {
                   setIsCustomPayment(false);
                 }}
                 className="flex-1 border border-gray-300 text-gray-700 px-4 py-3 rounded-md hover:bg-gray-50 text-sm font-medium"
+                disabled={processingPayment}
               >
                 Cancel
               </button>
               <button
-                onClick={processPayment}
+                onClick={handleProcessPayment}
                 disabled={
+                  processingPayment ||
                   (paymentMethod === "online" && !referenceNumber.trim()) ||
                   (isCustomPayment && (!customAmount || parseFloat(customAmount) < minAmount || parseFloat(customAmount) > maxAmount))
                 }
                 className={`flex-1 px-4 py-3 rounded-md text-sm font-medium ${
+                  processingPayment ||
                   (paymentMethod === "online" && !referenceNumber.trim()) ||
                   (isCustomPayment && (!customAmount || parseFloat(customAmount) < minAmount || parseFloat(customAmount) > maxAmount))
                     ? "bg-gray-400 cursor-not-allowed text-white"
                     : "bg-blue-600 hover:bg-blue-700 text-white"
                 }`}
               >
-                {isPendingPayment 
-                  ? (isCustomPayment && customAmount ? "Pay Partial Amount" : "Pay Pending Amount")
-                  : "Confirm Payment"
-                }
+                {processingPayment ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Processing...
+                  </div>
+                ) : isPendingPayment ? (
+                  isCustomPayment && customAmount ? "Pay Partial Amount" : "Pay Pending Amount"
+                ) : (
+                  "Confirm Payment"
+                )}
               </button>
             </div>
           </div>
@@ -915,6 +722,7 @@ const AccountsPage = () => {
     );
   };
 
+  // Payment History Modal Component
   const PaymentHistoryModal = () => {
     if (!showHistoryModal) return null;
 
@@ -1018,6 +826,7 @@ const AccountsPage = () => {
     );
   };
 
+  // Loading State
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-50 to-blue-500/5 p-6 flex items-center justify-center">
@@ -1029,6 +838,7 @@ const AccountsPage = () => {
     );
   }
 
+  // Authentication Required State
   if (error && !customer) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-50 to-blue-500/5 p-6 flex items-center justify-center">
@@ -1039,7 +849,7 @@ const AccountsPage = () => {
           </h3>
           <p className="text-gray-600 mb-4">{error}</p>
           <button
-            onClick={handleLoginRedirect}
+            onClick={() => navigate("/auth")}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md"
           >
             Login to Continue
@@ -1049,10 +859,11 @@ const AccountsPage = () => {
     );
   }
 
+  // Main Render
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-50 to-blue-500/5 p-6">
       <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header with Back button */}
+        {/* Header */}
         <div className="flex items-center justify-between">
           <button
             onClick={() => navigate("/")}
@@ -1081,7 +892,6 @@ const AccountsPage = () => {
         {error && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <p className="text-yellow-800">{error}</p>
-            <p className="text-yellow-700 text-sm mt-1">Showing demo data</p>
           </div>
         )}
 
