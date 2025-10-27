@@ -140,7 +140,10 @@ export const updateAccount = (id, data) => API.put(`/accounts/${id}`, data);
 export const getAccountById = (id) => API.get(`/accounts/${id}`);
 export const deleteAccount = (id) => API.delete(`/accounts/${id}`);
 export const getAccountStats = () => API.get('/accounts/stats/overview');
-export const getAccountsByCustomer = (customerId) => API.get(`/accounts/customer/${customerId}`);
+// export const getAccountsByCustomer = (customerId) => API.get(`/accounts/customer/${customerId}`);
+export const getAccountsByCustomer = (customerId) => {
+  return API.get(`/accounts/customer/${customerId}?t=${Date.now()}`);
+};
 export const getAccountByNumber = (accountNumber) => API.get(`/accounts/number/${accountNumber}`);
 export const updateAccountBalance = (accountId, balanceData) => API.patch(`/accounts/${accountId}/balance`, balanceData);
 
@@ -183,7 +186,10 @@ export const processBulkPayments = (paymentsData) => API.post('/payments/bulk', 
 // UPDATED PAYMENT PROCESSING ENDPOINTS - Now properly authenticated
 export const processPayment = (paymentData) => API.post('/payments/process', paymentData);
 export const updatePaymentStatus = (paymentId, statusData) => API.patch(`/payments/${paymentId}/status`, statusData);
-export const getPaymentHistory = (accountId) => API.get(`/payments/account/${accountId}/history`);
+// export const getPaymentHistory = (accountId) => API.get(`/payments/account/${accountId}/history`);
+export const getPaymentHistory = (accountId) => {
+  return API.get(`/payments/account/${accountId}/history?t=${Date.now()}`);
+};
 export const verifyPayment = (paymentId, verificationData) => API.post(`/payments/${paymentId}/verify`, verificationData);
 export const getPendingPayments = (params = {}) => API.get('/payments/pending', { params });
 export const getMyPayments = () => API.get('/payments/customer/my-payments');
