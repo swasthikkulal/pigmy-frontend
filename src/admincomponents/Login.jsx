@@ -29,31 +29,68 @@ const Login = () => {
     setError("");
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   setLoading(true);
+  //   setError("");
 
-    try {
-      const response = await loginAdmin(formData);
+  //   try {
+  //     const response = await loginAdmin(formData);
 
-      if (response.data.success) {
-        // Store token and admin data
-        localStorage.setItem("adminToken", response.data.data.token);
-        localStorage.setItem("adminData", JSON.stringify(response.data.data));
+  //     if (response.data.success) {
+  //       // Store token and admin data
+  //       localStorage.setItem("adminToken", response.data.token);
+  //       localStorage.setItem("adminData", JSON.stringify(response.data.data));
 
-        // Redirect to dashboard
-        navigate("/admin");
+  //       // Redirect to dashboard
+  //       navigate("/admin");
+  //     }
+  //   } catch (error) {
+  //     setError(
+  //       error.response?.data?.message || "Login failed. Please try again."
+  //     );
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setError("");
+
+  try {
+    const response = await loginAdmin(formData);
+    console.log('🔐 Login response:', response.data);
+
+    if (response.data.success) {
+      const token = response.data.token;
+      const adminData = response.data.data;
+      
+      console.log('✅ Token received:', token ? 'Yes' : 'No');
+
+      if (!token) {
+        throw new Error('No token received from server');
       }
-    } catch (error) {
-      setError(
-        error.response?.data?.message || "Login failed. Please try again."
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
 
+      // Store token and admin data
+      localStorage.setItem("adminToken", token);
+      localStorage.setItem("adminData", JSON.stringify(adminData));
+
+      console.log('✅ Token stored in localStorage');
+
+      // ✅ Redirect to /admin (which will show the layout with dashboard)
+      navigate("/admin");
+    }
+  } catch (error) {
+    console.error('❌ Login error:', error);
+    setError(
+      error.response?.data?.message || "Login failed. Please try again."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">

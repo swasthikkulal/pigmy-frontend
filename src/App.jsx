@@ -66,7 +66,8 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<AdminDashboard />} />
+            {/* ✅ Remove the duplicate redirect and use index properly */}
+            <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="collectors" element={<ManageCollectors />} />
             <Route path="customers" element={<ManageCustomers />} />
@@ -77,11 +78,9 @@ function App() {
             <Route path="feedback" element={<AdminFeedback />} />
           </Route>
 
-          {/* Redirects */}
-          <Route
-            path="/admin"
-            element={<Navigate to="/admin/dashboard" replace />}
-          />
+          {/* ✅ FIXED: Remove the conflicting /admin redirect route */}
+          
+          {/* Other Redirects */}
           <Route path="/customer" element={<Navigate to="/customer/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

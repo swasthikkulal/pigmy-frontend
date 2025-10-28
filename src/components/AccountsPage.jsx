@@ -60,39 +60,147 @@ const AccountsPage = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const loadCustomerAccounts = async () => {
-    try {
-      setLoading(true);
-      setError("");
+  // const loadCustomerAccounts = async () => {
+  //   try {
+  //     setLoading(true);
+  //     setError("");
 
-      const profileResponse = await getCustomerProfile();
-      const customerData = profileResponse.data.data;
-      setCustomer(customerData);
+  //     const profileResponse = await getCustomerProfile();
+  //     const customerData = profileResponse.data.data;
+  //     setCustomer(customerData);
 
-      const accountsResponse = await getAccountsByCustomer(customerData._id);
-      const accountsData = accountsResponse.data.data || [];
-      
-      // Calculate current balance for each account
-      const updatedAccounts = accountsData.map(account => {
-        const currentBalance = calculateCurrentBalance(account);
-        return {
-          ...account,
-          currentBalance
-        };
-      });
-      
-      setAccounts(updatedAccounts);
-      calculatePendingPayments(updatedAccounts);
-      setLastUpdated(new Date());
-    } catch (error) {
-      console.error("Error loading customer accounts:", error);
-      setError("Failed to load your accounts. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  //     const accountsResponse = await getAccountsByCustomer(customerData._id);
+  //     const accountsData = accountsResponse.data.data || [];
+
+  //     // Calculate current balance for each account
+  //     const updatedAccounts = accountsData.map((account) => {
+  //       const currentBalance = calculateCurrentBalance(account);
+  //       return {
+  //         ...account,
+  //         currentBalance,
+  //       };
+  //     });
+
+  //     setAccounts(updatedAccounts);
+  //     calculatePendingPayments(updatedAccounts);
+  //     setLastUpdated(new Date());
+  //   } catch (error) {
+  //     console.error("Error loading customer accounts:", error);
+  //     setError("Failed to load your accounts. Please try again.");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   // FIXED: Calculate current balance including completed cash payments
+//   const loadCustomerAccounts = async () => {
+//   try {
+//     setLoading(true);
+//     setError("");
+
+//     console.log('🔑 Customer token before API calls:', localStorage.getItem('customerToken'));
+
+//     // Test each API call individually
+//     try {
+//       console.log('1. 📋 Fetching customer profile...');
+//       const profileResponse = await getCustomerProfile();
+//       console.log('✅ Profile fetched successfully');
+//       const customerData = profileResponse.data.data;
+//       console.log(customerData, "customerdata")
+//       setCustomer(customerData);
+//     } catch (profileError) {
+//       console.log('❌ Profile fetch failed:', profileError.response?.status, profileError.response?.data);
+//       throw profileError;
+//     }
+
+//     try {
+//       console.log('2. 📊 Fetching customer accounts...');
+//       const accountsResponse = await getAccountsByCustomer(customerData._id);
+//       console.log('✅ Accounts fetched successfully');
+//       const accountsData = accountsResponse.data.data || [];
+
+//       // Calculate current balance for each account
+//       const updatedAccounts = accountsData.map((account) => {
+//         const currentBalance = calculateCurrentBalance(account);
+//         return {
+//           ...account,
+//           currentBalance,
+//         };
+//       });
+
+//       setAccounts(updatedAccounts);
+//       calculatePendingPayments(updatedAccounts);
+//       setLastUpdated(new Date());
+//     } catch (accountsError) {
+//       console.log('❌ Accounts fetch failed:', accountsError.response?.status, accountsError.response?.data);
+//       throw accountsError;
+//     }
+
+//     console.log('🔑 Customer token after API calls:', localStorage.getItem('customerToken'));
+
+//   } catch (error) {
+//     console.error("Error loading customer accounts:", error);
+//     console.log('🔑 Customer token after error:', localStorage.getItem('customerToken'));
+//     setError("Failed to load your accounts. Please try again.");
+//   } finally {
+//     setLoading(false);
+//   }
+// };
+const loadCustomerAccounts = async () => {
+  try {
+    setLoading(true);
+    setError("");
+
+    console.log('🔑 STEP 1: Checking localStorage...');
+    const customerToken = localStorage.getItem('customerToken');
+    console.log('📦 Customer token:', customerToken ? 'EXISTS' : 'MISSING');
+
+    if (!customerToken) {
+      setError("Please login first");
+      return;
+    }
+
+    console.log('🔑 STEP 2: Fetching customer profile...');
+    const profileResponse = await getCustomerProfile();
+    console.log('✅ Profile response:', profileResponse.data);
+    
+    // ✅ FIX: Store the customer data in a variable
+    const customerData = profileResponse.data.data;
+    setCustomer(customerData);
+    console.log('👤 Customer ID:', customerData._id);
+
+    console.log('🔑 STEP 3: Fetching customer accounts...');
+    // ✅ FIX: Now customerData is defined and accessible
+    const accountsResponse = await getAccountsByCustomer(customerData._id);
+    console.log('✅ Accounts response:', accountsResponse.data);
+    
+    const accountsData = accountsResponse.data.data || [];
+    console.log('📊 Accounts found:', accountsData.length);
+
+    const updatedAccounts = accountsData.map((account) => {
+      const currentBalance = calculateCurrentBalance(account);
+      return {
+        ...account,
+        currentBalance,
+      };
+    });
+
+    setAccounts(updatedAccounts);
+    calculatePendingPayments(updatedAccounts);
+    setLastUpdated(new Date());
+
+  } catch (error) {
+    console.error("💥 Error loading customer accounts:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+    setError("Failed to load your accounts. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
+  
   const calculateCurrentBalance = (account) => {
     if (!account.transactions || account.transactions.length === 0) {
       return account.totalBalance || 0;
@@ -101,7 +209,10 @@ const AccountsPage = () => {
     // Sum ALL completed transactions (both online and verified cash payments)
     const totalAmount = account.transactions.reduce((sum, transaction) => {
       // Include both completed online payments AND completed cash payments
-      if (transaction.status === "completed" || transaction.status === "verified") {
+      if (
+        transaction.status === "completed" ||
+        transaction.status === "verified"
+      ) {
         return sum + (transaction.amount || 0);
       }
       return sum;
@@ -114,12 +225,13 @@ const AccountsPage = () => {
   const calculateMaturityAmount = (account) => {
     const dailyAmount = account.dailyAmount || 0;
     const duration = account.duration || account.planId?.duration || 0;
-    const interestRate = account.planId?.interestRate || account.interestRate || 0;
+    const interestRate =
+      account.planId?.interestRate || account.interestRate || 0;
 
     const totalPrincipal = dailyAmount * duration;
     const interestAmount = (totalPrincipal * interestRate) / 100;
     const maturityAmount = totalPrincipal + interestAmount;
-    
+
     return {
       principalAmount: totalPrincipal,
       interestAmount,
@@ -163,7 +275,10 @@ const AccountsPage = () => {
 
       // Calculate total paid amount (including completed cash payments)
       transactions.forEach((transaction) => {
-        if (transaction.status === "completed" || transaction.status === "verified") {
+        if (
+          transaction.status === "completed" ||
+          transaction.status === "verified"
+        ) {
           totalPaidAmount += transaction.amount || 0;
         }
       });
@@ -210,10 +325,13 @@ const AccountsPage = () => {
           const hasTransactionForDate = transactions.some((transaction) => {
             if (!transaction.date) return false;
             const transactionDate = new Date(transaction.date);
-            const transactionDateKey = transactionDate.toISOString().split("T")[0];
+            const transactionDateKey = transactionDate
+              .toISOString()
+              .split("T")[0];
             return (
               transactionDateKey === dateKey &&
-              (transaction.status === "completed" || transaction.status === "verified")
+              (transaction.status === "completed" ||
+                transaction.status === "verified")
             );
           });
 
@@ -238,7 +356,10 @@ const AccountsPage = () => {
         }
       }
 
-      const pendingDays = calculatePendingDays(account, remainingMaturityAmount);
+      const pendingDays = calculatePendingDays(
+        account,
+        remainingMaturityAmount
+      );
 
       pending[account._id] = {
         amount: pendingAmount,
@@ -290,7 +411,10 @@ const AccountsPage = () => {
     if (account.accountType) return account.accountType;
     if (account.planId?.type) return account.planId.type;
 
-    const planName = account.planId?.name?.toLowerCase() || account.planName?.toLowerCase() || "";
+    const planName =
+      account.planId?.name?.toLowerCase() ||
+      account.planName?.toLowerCase() ||
+      "";
     if (planName.includes("weekly")) return "weekly";
     if (planName.includes("daily")) return "daily";
     if (planName.includes("monthly")) return "monthly";
@@ -300,10 +424,14 @@ const AccountsPage = () => {
   const getAmountLabelFromAccount = (account) => {
     const planType = getPlanTypeFromAccount(account);
     switch (planType) {
-      case "weekly": return "week";
-      case "daily": return "day";
-      case "monthly": return "month";
-      default: return "month";
+      case "weekly":
+        return "week";
+      case "daily":
+        return "day";
+      case "monthly":
+        return "month";
+      default:
+        return "month";
     }
   };
 
@@ -313,10 +441,14 @@ const AccountsPage = () => {
     const planType = getPlanTypeFromAccount(account);
 
     switch (planType.toLowerCase()) {
-      case "daily": return `${duration} day${duration > 1 ? "s" : ""}`;
-      case "weekly": return `${duration} week${duration > 1 ? "s" : ""}`;
-      case "monthly": return `${duration} month${duration > 1 ? "s" : ""}`;
-      default: return `${duration} months`;
+      case "daily":
+        return `${duration} day${duration > 1 ? "s" : ""}`;
+      case "weekly":
+        return `${duration} week${duration > 1 ? "s" : ""}`;
+      case "monthly":
+        return `${duration} month${duration > 1 ? "s" : ""}`;
+      default:
+        return `${duration} months`;
     }
   };
 
@@ -357,14 +489,22 @@ const AccountsPage = () => {
     const pending = pendingPayments[account._id];
 
     if (pending?.isMaturityReached) {
-      alert("Congratulations! You have reached the maturity amount for this account. No further payments are required.");
+      alert(
+        "Congratulations! You have reached the maturity amount for this account. No further payments are required."
+      );
       return;
     }
 
     if (pending && pending.hasPending) {
       const planType = getPlanTypeFromAccount(account);
       const pendingTimeDisplay = getPendingTimeDisplay(account, pending);
-      const confirmMessage = `You have ${pending.count} pending ${planType} payment${pending.count > 1 ? "s" : ""} totaling ₹${pending.amount}. \n\nApproximately ${pendingTimeDisplay} remaining to reach maturity.\n\nDo you want to pay the pending amount of ₹${pending.amount} instead of the regular ${planType} amount of ₹${account.dailyAmount}?`;
+      const confirmMessage = `You have ${
+        pending.count
+      } pending ${planType} payment${pending.count > 1 ? "s" : ""} totaling ₹${
+        pending.amount
+      }. \n\nApproximately ${pendingTimeDisplay} remaining to reach maturity.\n\nDo you want to pay the pending amount of ₹${
+        pending.amount
+      } instead of the regular ${planType} amount of ₹${account.dailyAmount}?`;
 
       if (window.confirm(confirmMessage)) {
         setSelectedAccount({
@@ -451,7 +591,8 @@ const AccountsPage = () => {
       let remainingPendingAmount = 0;
 
       const pending = pendingPayments[selectedAccount._id];
-      const maxPendingAmount = pending?.amount || selectedAccount.dailyAmount || 0;
+      const maxPendingAmount =
+        pending?.amount || selectedAccount.dailyAmount || 0;
       const minAmount = selectedAccount.dailyAmount || 0;
 
       if (isCustomPayment && customAmount) {
@@ -463,18 +604,26 @@ const AccountsPage = () => {
         }
 
         if (enteredAmount > maxPendingAmount) {
-          alert(`Payment amount cannot exceed pending amount of ₹${maxPendingAmount}`);
+          alert(
+            `Payment amount cannot exceed pending amount of ₹${maxPendingAmount}`
+          );
           return;
         }
 
         if (enteredAmount > pending.remainingMaturityAmount) {
-          alert(`Payment amount cannot exceed remaining maturity amount of ₹${pending.remainingMaturityAmount}`);
+          alert(
+            `Payment amount cannot exceed remaining maturity amount of ₹${pending.remainingMaturityAmount}`
+          );
           return;
         }
 
         if (!isValidMultiple(enteredAmount, minAmount)) {
           const validMultiples = getValidMultiples(minAmount, maxPendingAmount);
-          alert(`Please enter a valid multiple of ₹${minAmount}. Valid amounts are: ${validMultiples.join(", ")}`);
+          alert(
+            `Please enter a valid multiple of ₹${minAmount}. Valid amounts are: ${validMultiples.join(
+              ", "
+            )}`
+          );
           return;
         }
 
@@ -516,7 +665,9 @@ const AccountsPage = () => {
 
       if (response.data.success) {
         // Store paid periods in localStorage
-        const storedPaidPeriods = JSON.parse(localStorage.getItem("paidPeriods") || "{}");
+        const storedPaidPeriods = JSON.parse(
+          localStorage.getItem("paidPeriods") || "{}"
+        );
         storedPaidPeriods[selectedAccount._id] = [
           ...(storedPaidPeriods[selectedAccount._id] || []),
           ...coveredPeriods.map((period) => ({
@@ -550,14 +701,22 @@ const AccountsPage = () => {
 
         if (coveredPeriods.length > 0) {
           const periodType = getPlanTypeFromAccount(selectedAccount);
-          alertMessage += `\n\nThis payment covers ${coveredPeriods.length} ${periodType}${coveredPeriods.length > 1 ? "s" : ""}:`;
+          alertMessage += `\n\nThis payment covers ${
+            coveredPeriods.length
+          } ${periodType}${coveredPeriods.length > 1 ? "s" : ""}:`;
           coveredPeriods.forEach((period) => {
             const dateStr = period.date.toLocaleDateString();
             alertMessage += `\n• ${dateStr} - ₹${period.amount}`;
           });
 
           if (isPartialPayment && remainingPendingAmount > 0) {
-            alertMessage += `\n\nRemaining pending: ${pending.missedPeriods.length - coveredPeriods.length} ${periodType}${pending.missedPeriods.length - coveredPeriods.length > 1 ? "s" : ""} (₹${remainingPendingAmount})`;
+            alertMessage += `\n\nRemaining pending: ${
+              pending.missedPeriods.length - coveredPeriods.length
+            } ${periodType}${
+              pending.missedPeriods.length - coveredPeriods.length > 1
+                ? "s"
+                : ""
+            } (₹${remainingPendingAmount})`;
           }
         }
 
@@ -582,7 +741,12 @@ const AccountsPage = () => {
   };
 
   useEffect(() => {
-    if (showPaymentModal && selectedAccount && isCustomPayment && customAmount) {
+    if (
+      showPaymentModal &&
+      selectedAccount &&
+      isCustomPayment &&
+      customAmount
+    ) {
       const pending = pendingPayments[selectedAccount._id];
       if (pending) {
         const paymentAmount = parseFloat(customAmount);
@@ -593,7 +757,13 @@ const AccountsPage = () => {
         }));
       }
     }
-  }, [customAmount, isCustomPayment, selectedAccount, showPaymentModal, pendingPayments]);
+  }, [
+    customAmount,
+    isCustomPayment,
+    selectedAccount,
+    showPaymentModal,
+    pendingPayments,
+  ]);
 
   const handleViewPaymentHistory = async (account) => {
     await loadPaymentHistory(account._id);
@@ -608,21 +778,31 @@ const AccountsPage = () => {
 
   const getAccountTypeColor = (type) => {
     switch (type?.toLowerCase()) {
-      case "savings": return "bg-blue-100 text-blue-800";
-      case "pigmy": return "bg-green-100 text-green-800";
-      case "fixed deposit": return "bg-purple-100 text-purple-800";
-      case "daily deposit": return "bg-orange-100 text-orange-800";
-      default: return "bg-gray-100 text-gray-800";
+      case "savings":
+        return "bg-blue-100 text-blue-800";
+      case "pigmy":
+        return "bg-green-100 text-green-800";
+      case "fixed deposit":
+        return "bg-purple-100 text-purple-800";
+      case "daily deposit":
+        return "bg-orange-100 text-orange-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
   };
 
   const getAccountTypeIcon = (type) => {
     switch (type?.toLowerCase()) {
-      case "savings": return <Wallet className="h-5 w-5" />;
-      case "pigmy": return <TrendingUp className="h-5 w-5" />;
-      case "fixed deposit": return <Calendar className="h-5 w-5" />;
-      case "daily deposit": return <DollarSign className="h-5 w-5" />;
-      default: return <Wallet className="h-5 w-5" />;
+      case "savings":
+        return <Wallet className="h-5 w-5" />;
+      case "pigmy":
+        return <TrendingUp className="h-5 w-5" />;
+      case "fixed deposit":
+        return <Calendar className="h-5 w-5" />;
+      case "daily deposit":
+        return <DollarSign className="h-5 w-5" />;
+      default:
+        return <Wallet className="h-5 w-5" />;
     }
   };
 
@@ -661,7 +841,9 @@ const AccountsPage = () => {
           <div className="p-6 space-y-6">
             {/* Basic Information */}
             <div>
-              <h4 className="text-lg font-semibold mb-4 text-gray-900">Basic Information</h4>
+              <h4 className="text-lg font-semibold mb-4 text-gray-900">
+                Basic Information
+              </h4>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-gray-600">Account Type</p>
@@ -686,12 +868,19 @@ const AccountsPage = () => {
                 <div>
                   <p className="text-gray-600">Interest Rate</p>
                   <p className="font-semibold text-green-600">
-                    {selectedAccount.planId?.interestRate || selectedAccount.interestRate || "N/A"}%
+                    {selectedAccount.planId?.interestRate ||
+                      selectedAccount.interestRate ||
+                      "N/A"}
+                    %
                   </p>
                 </div>
                 <div>
                   <p className="text-gray-600">
-                    {amountLabel === "week" ? "Weekly Amount" : amountLabel === "month" ? "Monthly Amount" : "Daily Amount"}
+                    {amountLabel === "week"
+                      ? "Weekly Amount"
+                      : amountLabel === "month"
+                      ? "Monthly Amount"
+                      : "Daily Amount"}
                   </p>
                   <p className="font-semibold">
                     ₹{selectedAccount.dailyAmount || "0"}/{amountLabel}
@@ -717,7 +906,9 @@ const AccountsPage = () => {
             {/* Financial Information */}
             {pending && (
               <div>
-                <h4 className="text-lg font-semibold mb-4 text-gray-900">Financial Information</h4>
+                <h4 className="text-lg font-semibold mb-4 text-gray-900">
+                  Financial Information
+                </h4>
                 <div className="space-y-4">
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
@@ -752,7 +943,9 @@ const AccountsPage = () => {
                     <div>
                       <p className="text-gray-600">Current Balance</p>
                       <p className="text-lg font-bold text-blue-600">
-                        ₹{selectedAccount.currentBalance?.toLocaleString() || "0"}
+                        ₹
+                        {selectedAccount.currentBalance?.toLocaleString() ||
+                          "0"}
                       </p>
                     </div>
                     <div>
@@ -770,26 +963,36 @@ const AccountsPage = () => {
                     <div>
                       <p className="text-gray-600">Remaining</p>
                       <p className="font-semibold text-orange-600">
-                        ₹{pending.remainingMaturityAmount?.toLocaleString() || "0"}
+                        ₹
+                        {pending.remainingMaturityAmount?.toLocaleString() ||
+                          "0"}
                       </p>
                     </div>
                   </div>
 
                   {pending.maturityCalculation && (
                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                      <h5 className="text-sm font-semibold text-gray-800 mb-2">Maturity Calculation</h5>
+                      <h5 className="text-sm font-semibold text-gray-800 mb-2">
+                        Maturity Calculation
+                      </h5>
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div>
                           <p className="text-gray-600">Principal Amount</p>
-                          <p className="font-semibold">₹{pending.principalAmount?.toLocaleString()}</p>
+                          <p className="font-semibold">
+                            ₹{pending.principalAmount?.toLocaleString()}
+                          </p>
                         </div>
                         <div>
                           <p className="text-gray-600">Interest Amount</p>
-                          <p className="font-semibold">₹{pending.interestAmount?.toLocaleString()}</p>
+                          <p className="font-semibold">
+                            ₹{pending.interestAmount?.toLocaleString()}
+                          </p>
                         </div>
                         <div className="col-span-2 text-center">
                           <p className="text-gray-600">Interest Rate</p>
-                          <p className="font-semibold">{pending.maturityCalculation.interestRate}%</p>
+                          <p className="font-semibold">
+                            {pending.maturityCalculation.interestRate}%
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -805,21 +1008,29 @@ const AccountsPage = () => {
                         </p>
                       </div>
                       <p className="text-sm text-red-700 mb-2">
-                        {pending.count} pending {getPlanTypeFromAccount(selectedAccount)} payment{pending.count > 1 ? "s" : ""} - ₹{pending.amount}
+                        {pending.count} pending{" "}
+                        {getPlanTypeFromAccount(selectedAccount)} payment
+                        {pending.count > 1 ? "s" : ""} - ₹{pending.amount}
                       </p>
-                      {pending.missedPeriods && pending.missedPeriods.length > 0 && (
-                        <div className="text-xs text-red-600">
-                          <p className="font-semibold mb-1">Missed dates:</p>
-                          {pending.missedPeriods.slice(0, 5).map((period, index) => (
-                            <div key={index}>
-                              • {period.date.toLocaleDateString()} - ₹{period.amount}
-                            </div>
-                          ))}
-                          {pending.missedPeriods.length > 5 && (
-                            <div>... and {pending.missedPeriods.length - 5} more</div>
-                          )}
-                        </div>
-                      )}
+                      {pending.missedPeriods &&
+                        pending.missedPeriods.length > 0 && (
+                          <div className="text-xs text-red-600">
+                            <p className="font-semibold mb-1">Missed dates:</p>
+                            {pending.missedPeriods
+                              .slice(0, 5)
+                              .map((period, index) => (
+                                <div key={index}>
+                                  • {period.date.toLocaleDateString()} - ₹
+                                  {period.amount}
+                                </div>
+                              ))}
+                            {pending.missedPeriods.length > 5 && (
+                              <div>
+                                ... and {pending.missedPeriods.length - 5} more
+                              </div>
+                            )}
+                          </div>
+                        )}
                     </div>
                   )}
 
@@ -835,10 +1046,15 @@ const AccountsPage = () => {
                         </span>
                       </div>
                       <p className="text-xs text-orange-700 mt-1">
-                        Based on {pending.pendingDays} payment{pending.pendingDays > 1 ? "s" : ""} of ₹{selectedAccount.dailyAmount || "0"} per {amountLabel}
+                        Based on {pending.pendingDays} payment
+                        {pending.pendingDays > 1 ? "s" : ""} of ₹
+                        {selectedAccount.dailyAmount || "0"} per {amountLabel}
                       </p>
                       <p className="text-xs text-orange-600 mt-1">
-                        Calculation: ₹{pending.remainingMaturityAmount} ÷ ₹{selectedAccount.dailyAmount} = {pending.pendingDays} {amountLabel}{pending.pendingDays > 1 ? "s" : ""}
+                        Calculation: ₹{pending.remainingMaturityAmount} ÷ ₹
+                        {selectedAccount.dailyAmount} = {pending.pendingDays}{" "}
+                        {amountLabel}
+                        {pending.pendingDays > 1 ? "s" : ""}
                       </p>
                     </div>
                   )}
@@ -862,20 +1078,28 @@ const AccountsPage = () => {
             {/* Collector Information */}
             {selectedAccount.collectorId && (
               <div>
-                <h4 className="text-lg font-semibold mb-4 text-gray-900">Collector Information</h4>
+                <h4 className="text-lg font-semibold mb-4 text-gray-900">
+                  Collector Information
+                </h4>
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                   <div className="space-y-2 text-sm">
                     <div>
                       <p className="text-gray-600">Name</p>
-                      <p className="font-semibold">{selectedAccount.collectorId.name}</p>
+                      <p className="font-semibold">
+                        {selectedAccount.collectorId.name}
+                      </p>
                     </div>
                     <div>
                       <p className="text-gray-600">Area</p>
-                      <p className="font-semibold">{selectedAccount.collectorId.area}</p>
+                      <p className="font-semibold">
+                        {selectedAccount.collectorId.area}
+                      </p>
                     </div>
                     <div>
                       <p className="text-gray-600">Phone</p>
-                      <p className="font-semibold">{selectedAccount.collectorId.phone}</p>
+                      <p className="font-semibold">
+                        {selectedAccount.collectorId.phone}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -905,21 +1129,31 @@ const AccountsPage = () => {
     const pendingAmount = selectedAccount.pendingAmount || regularAmount;
     const isPendingPayment = selectedAccount.isPendingPayment;
     const minAmount = regularAmount;
-    const maxAmount = Math.min(pendingAmount, selectedAccount.remainingMaturityAmount || pendingAmount);
+    const maxAmount = Math.min(
+      pendingAmount,
+      selectedAccount.remainingMaturityAmount || pendingAmount
+    );
     const maturityAmount = selectedAccount.maturityAmount || 0;
     const totalPaidAmount = selectedAccount.totalPaidAmount || 0;
-    const remainingMaturityAmount = selectedAccount.remainingMaturityAmount || maturityAmount;
+    const remainingMaturityAmount =
+      selectedAccount.remainingMaturityAmount || maturityAmount;
     const pendingDetails = selectedAccount.pendingDetails;
     const pending = pendingPayments[selectedAccount._id];
     const pendingTimeDisplay = getPendingTimeDisplay(selectedAccount, pending);
     const coveredPeriods = coveredPeriodsMap[selectedAccount._id] || [];
 
-    const calculatedPaymentAmount = isCustomPayment && customAmount ? parseFloat(customAmount) : maxAmount;
-    const remainingAmount = isCustomPayment && customAmount ? maxAmount - parseFloat(customAmount) : 0;
+    const calculatedPaymentAmount =
+      isCustomPayment && customAmount ? parseFloat(customAmount) : maxAmount;
+    const remainingAmount =
+      isCustomPayment && customAmount
+        ? maxAmount - parseFloat(customAmount)
+        : 0;
 
     const hasPendingPayments = pending?.hasPending;
     const validMultiples = getValidMultiples(minAmount, maxAmount);
-    const isAmountValid = customAmount ? isValidMultiple(parseFloat(customAmount), minAmount) : true;
+    const isAmountValid = customAmount
+      ? isValidMultiple(parseFloat(customAmount), minAmount)
+      : true;
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -955,19 +1189,31 @@ const AccountsPage = () => {
                     <div
                       className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                       style={{
-                        width: `${calculateProgress(totalPaidAmount, maturityAmount)}%`,
+                        width: `${calculateProgress(
+                          totalPaidAmount,
+                          maturityAmount
+                        )}%`,
                       }}
                     ></div>
                   </div>
                   <p className="text-xs text-blue-700 mt-1">
                     Remaining: ₹{remainingMaturityAmount} •{" "}
-                    {calculateProgress(totalPaidAmount, maturityAmount).toFixed(1)}% Complete • {pendingTimeDisplay} remaining
+                    {calculateProgress(totalPaidAmount, maturityAmount).toFixed(
+                      1
+                    )}
+                    % Complete • {pendingTimeDisplay} remaining
                   </p>
                 </div>
 
                 <p className="text-sm text-gray-600 mt-3">
-                  {isPendingPayment ? "Pending Amount" : amountLabel === "week" ? "Weekly Amount" : amountLabel === "month" ? "Monthly Amount" : "Daily Amount"}:
-                  <span className="font-semibold"> ₹{pendingAmount}</span>
+                  {isPendingPayment
+                    ? "Pending Amount"
+                    : amountLabel === "week"
+                    ? "Weekly Amount"
+                    : amountLabel === "month"
+                    ? "Monthly Amount"
+                    : "Daily Amount"}
+                  :<span className="font-semibold"> ₹{pendingAmount}</span>
                 </p>
               </div>
 
@@ -984,7 +1230,9 @@ const AccountsPage = () => {
                             setCustomAmount("");
                           }}
                           className={`flex-1 flex items-center justify-center p-3 border rounded-lg text-sm ${
-                            !isCustomPayment ? "border-blue-500 bg-blue-50" : "border-gray-300"
+                            !isCustomPayment
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-gray-300"
                           }`}
                         >
                           <CheckCircle className="h-4 w-4 mr-2" />
@@ -993,7 +1241,9 @@ const AccountsPage = () => {
                         <button
                           onClick={() => setIsCustomPayment(true)}
                           className={`flex-1 flex items-center justify-center p-3 border rounded-lg text-sm ${
-                            isCustomPayment ? "border-blue-500 bg-blue-50" : "border-gray-300"
+                            isCustomPayment
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-gray-300"
                           }`}
                         >
                           <DollarSign className="h-4 w-4 mr-2" />
@@ -1010,7 +1260,9 @@ const AccountsPage = () => {
                             <input
                               type="text"
                               value={customAmount}
-                              onChange={(e) => handleCustomAmountChange(e.target.value)}
+                              onChange={(e) =>
+                                handleCustomAmountChange(e.target.value)
+                              }
                               placeholder={`Enter multiple of ₹${minAmount}`}
                               className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:border-blue-500 ${
                                 customAmount && !isAmountValid
@@ -1035,7 +1287,9 @@ const AccountsPage = () => {
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-600">Remaining Pending</p>
+                                  <p className="text-gray-600">
+                                    Remaining Pending
+                                  </p>
                                   <p className="font-semibold text-orange-600">
                                     ₹{remainingAmount}
                                   </p>
@@ -1066,7 +1320,9 @@ const AccountsPage = () => {
                   <button
                     onClick={() => setPaymentMethod("cash")}
                     className={`flex-1 flex items-center justify-center p-3 border rounded-lg text-sm ${
-                      paymentMethod === "cash" ? "border-blue-500 bg-blue-50" : "border-gray-300"
+                      paymentMethod === "cash"
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-300"
                     }`}
                   >
                     <DollarSign className="h-4 w-4 mr-2" />
@@ -1075,7 +1331,9 @@ const AccountsPage = () => {
                   <button
                     onClick={() => setPaymentMethod("online")}
                     className={`flex-1 flex items-center justify-center p-3 border rounded-lg text-sm ${
-                      paymentMethod === "online" ? "border-blue-500 bg-blue-50" : "border-gray-300"
+                      paymentMethod === "online"
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-300"
                     }`}
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
@@ -1088,7 +1346,9 @@ const AccountsPage = () => {
               {paymentMethod === "online" && (
                 <div className="space-y-4">
                   <div className="text-center">
-                    <p className="text-sm text-gray-600 mb-2">Scan QR Code to Pay</p>
+                    <p className="text-sm text-gray-600 mb-2">
+                      Scan QR Code to Pay
+                    </p>
                     <div className="bg-gray-100 p-4 rounded-lg inline-block">
                       <QrCode className="h-24 w-24 mx-auto text-gray-600" />
                     </div>
@@ -1106,8 +1366,10 @@ const AccountsPage = () => {
                         placeholder="Enter UTR/Transaction ID"
                         className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                       />
-                      <button
-                        onClick={() => setReferenceNumber(generateReferenceNumber())}
+                      <button hidden
+                        onClick={() =>
+                          setReferenceNumber(generateReferenceNumber())
+                        }
                         className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md text-sm border border-gray-300 whitespace-nowrap"
                       >
                         Generate
@@ -1127,7 +1389,8 @@ const AccountsPage = () => {
                         Cash Payment - Status: PENDING
                       </p>
                       <p className="text-sm text-yellow-700 mt-1">
-                        Please hand over ₹{calculatedPaymentAmount} to our collector.
+                        Please hand over ₹{calculatedPaymentAmount} to our
+                        collector.
                       </p>
                     </div>
                   </div>
@@ -1160,12 +1423,22 @@ const AccountsPage = () => {
                 disabled={
                   processingPayment ||
                   (paymentMethod === "online" && !referenceNumber.trim()) ||
-                  (hasPendingPayments && isCustomPayment && (!customAmount || parseFloat(customAmount) < minAmount || parseFloat(customAmount) > maxAmount || !isAmountValid))
+                  (hasPendingPayments &&
+                    isCustomPayment &&
+                    (!customAmount ||
+                      parseFloat(customAmount) < minAmount ||
+                      parseFloat(customAmount) > maxAmount ||
+                      !isAmountValid))
                 }
                 className={`flex-1 px-4 py-3 rounded-md text-sm font-medium ${
                   processingPayment ||
                   (paymentMethod === "online" && !referenceNumber.trim()) ||
-                  (hasPendingPayments && isCustomPayment && (!customAmount || parseFloat(customAmount) < minAmount || parseFloat(customAmount) > maxAmount || !isAmountValid))
+                  (hasPendingPayments &&
+                    isCustomPayment &&
+                    (!customAmount ||
+                      parseFloat(customAmount) < minAmount ||
+                      parseFloat(customAmount) > maxAmount ||
+                      !isAmountValid))
                     ? "bg-gray-400 cursor-not-allowed text-white"
                     : "bg-blue-600 hover:bg-blue-700 text-white"
                 }`}
@@ -1214,7 +1487,7 @@ const AccountsPage = () => {
             <p className="text-gray-600 mt-1">
               {selectedAccount.accountNumber} - {selectedAccount.type}
             </p>
-            
+
             {/* Current Balance Display */}
             <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
               <div className="bg-green-50 border border-green-200 rounded-lg p-3">
@@ -1441,12 +1714,14 @@ const AccountsPage = () => {
                   {/* Quick Status */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">Current Balance</span>
+                      <span className="text-sm text-gray-600">
+                        Current Balance
+                      </span>
                       <span className="text-lg font-bold text-blue-600">
                         ₹{account.currentBalance?.toLocaleString() || "0"}
                       </span>
                     </div>
-                    
+
                     {pending && (
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
                         <div className="flex items-center justify-between mb-1">
@@ -1454,7 +1729,11 @@ const AccountsPage = () => {
                             Maturity Progress
                           </span>
                           <span className="text-xs font-bold text-blue-600">
-                            {calculateProgress(pending.totalPaidAmount, pending.maturityAmount).toFixed(1)}%
+                            {calculateProgress(
+                              pending.totalPaidAmount,
+                              pending.maturityAmount
+                            ).toFixed(1)}
+                            %
                           </span>
                         </div>
                         <div className="w-full bg-blue-200 rounded-full h-1.5">
@@ -1483,19 +1762,21 @@ const AccountsPage = () => {
                       <Clock className="h-4 w-4" />
                       History
                     </button>
-                    {account.status === "active" && account.dailyAmount > 0 && !pending?.isMaturityReached && (
-                      <button
-                        onClick={() => handlePayment(account)}
-                        className={`flex-1 px-3 py-2 rounded-md transition-colors text-sm flex items-center justify-center gap-1 ${
-                          pending?.hasPending
-                            ? "bg-red-600 hover:bg-red-700 text-white"
-                            : "bg-green-600 hover:bg-green-700 text-white"
-                        }`}
-                      >
-                        <DollarSign className="h-4 w-4" />
-                        {pending?.hasPending ? "Pay Pending" : "Pay"}
-                      </button>
-                    )}
+                    {account.status === "active" &&
+                      account.dailyAmount > 0 &&
+                      !pending?.isMaturityReached && (
+                        <button
+                          onClick={() => handlePayment(account)}
+                          className={`flex-1 px-3 py-2 rounded-md transition-colors text-sm flex items-center justify-center gap-1 ${
+                            pending?.hasPending
+                              ? "bg-red-600 hover:bg-red-700 text-white"
+                              : "bg-green-600 hover:bg-green-700 text-white"
+                          }`}
+                        >
+                          <DollarSign className="h-4 w-4" />
+                          {pending?.hasPending ? "Pay Pending" : "Pay"}
+                        </button>
+                      )}
                   </div>
                 </div>
               </div>
@@ -1511,7 +1792,8 @@ const AccountsPage = () => {
               No accounts found
             </h3>
             <p className="text-gray-600 mb-4">
-              You don't have any accounts yet. Contact admin to create an account for you.
+              You don't have any accounts yet. Contact admin to create an
+              account for you.
             </p>
             <button
               onClick={() => navigate("/customer/dashboard")}

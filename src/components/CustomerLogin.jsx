@@ -1,24 +1,24 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, LogIn, Loader, User } from 'lucide-react';
-import { loginCustomer } from '../services/api';
+import React, { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { Eye, EyeOff, LogIn, Loader, User } from "lucide-react";
+import { loginCustomer } from "../services/api";
 
 const CustomerLogin = () => {
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    email: "",
+    password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
   const handleChange = (e) => {
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     });
-    setError('');
+    setError("");
   };
 
   // const handleSubmit = async (e) => {
@@ -28,12 +28,12 @@ const CustomerLogin = () => {
 
   //   try {
   //     const response = await loginCustomer(formData);
-      
+
   //     if (response.data.success) {
   //       // Store customer token and data
   //       localStorage.setItem('customerToken', response.data.data.token);
   //       localStorage.setItem('customerData', JSON.stringify(response.data.data));
-        
+
   //       // Redirect to customer dashboard
   //       navigate('/customer/dashboard');
   //     }
@@ -45,27 +45,32 @@ const CustomerLogin = () => {
   // };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setError('');
+    e.preventDefault();
+    setLoading(true);
+    setError("");
 
-  try {
-    const response = await loginCustomer(formData);
-    
-    if (response.data.success) {
-      // Store customer token and data
-      localStorage.setItem('customerToken', response.data.data.token);
-      localStorage.setItem('customerData', JSON.stringify(response.data.data));
-      
-      // Redirect to customer dashboard
-      navigate('/');
+    try {
+      const response = await loginCustomer(formData);
+
+      if (response.data.success) {
+        // Store customer token and data
+        localStorage.setItem("customerToken", response.data.token);
+        localStorage.setItem(
+          "customerData",
+          JSON.stringify(response.data.data)
+        );
+
+        // Redirect to customer dashboard
+        navigate("/");
+      }
+    } catch (error) {
+      setError(
+        error.response?.data?.message || "Login failed. Please try again."
+      );
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    setError(error.response?.data?.message || 'Login failed. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -81,7 +86,10 @@ const CustomerLogin = () => {
           </p>
         </div>
 
-        <form className="mt-8 space-y-6 bg-white p-8 rounded-xl shadow-lg" onSubmit={handleSubmit}>
+        <form
+          className="mt-8 space-y-6 bg-white p-8 rounded-xl shadow-lg"
+          onSubmit={handleSubmit}
+        >
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
               {error}
@@ -90,7 +98,10 @@ const CustomerLogin = () => {
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Email Address
               </label>
               <input
@@ -106,14 +117,17 @@ const CustomerLogin = () => {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Password
               </label>
               <div className="relative">
                 <input
                   id="password"
                   name="password"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   required
                   value={formData.password}
                   onChange={handleChange}
@@ -159,8 +173,8 @@ const CustomerLogin = () => {
           </div>
 
           <div className="text-center">
-            <Link 
-              to="/" 
+            <Link
+              to="/"
               className="text-green-600 hover:text-green-800 text-sm font-medium transition-colors"
             >
               ← Back to Main Site

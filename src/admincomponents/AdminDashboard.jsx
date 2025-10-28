@@ -9,11 +9,10 @@ import {
   BarChart3,
   PieChart,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  RefreshCw // Add this import
 } from "lucide-react";
-
-// Import all the API functions that now exist
-import { getAccounts, getCustomers, getCollectors, getPlans } from "../services/api";
+import axios from "axios";
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState({
@@ -55,80 +54,138 @@ const AdminDashboard = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Starting dashboard data fetch with direct axios calls...');
       
-      // Use mock data for now since backend might not be ready
-      const mockAccounts = [
-        { _id: '1', status: 'active', dailyAmount: 100, planId: { name: 'Basic Plan' } },
-        { _id: '2', status: 'active', dailyAmount: 150, planId: { name: 'Premium Plan' } },
-        { _id: '3', status: 'inactive', dailyAmount: 200, planId: { name: 'Basic Plan' } }
-      ];
-      
-      const mockCustomers = [
-        { _id: '1', name: 'Customer 1' },
-        { _id: '2', name: 'Customer 2' },
-        { _id: '3', name: 'Customer 3' }
-      ];
-      
-      const mockCollectors = [
-        { _id: '1', name: 'Collector 1' },
-        { _id: '2', name: 'Collector 2' }
-      ];
-      
-      const mockPlans = [
-        { _id: '1', name: 'Basic Plan', amount: 100 },
-        { _id: '2', name: 'Premium Plan', amount: 150 },
-        { _id: '3', name: 'Gold Plan', amount: 200 }
-      ];
+      // Get token from localStorage
+      const token = localStorage.getItem('adminToken');
+      if (!token) {
+        console.log('🛑 No admin token found');
+        useMockDataOnly();
+        return;
+      }
 
+      console.log('🔑 Token found, making direct API calls...');
+
+      // Create axios instance with auth header
+      const api = axios.create({
+        baseURL: 'http://localhost:5000/api',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // Make direct API calls using axios.get
       try {
-        // Try to fetch real data, but use mock data if it fails
-        const [accountsRes, customersRes, collectorsRes, plansRes] = await Promise.all([
-          getAccounts().catch(() => ({ data: { data: mockAccounts } })),
-          getCustomers().catch(() => ({ data: { data: mockCustomers } })),
-          getCollectors().catch(() => ({ data: { data: mockCollectors } })),
-          getPlans().catch(() => ({ data: { data: mockPlans } }))
-        ]);
+        console.log('1. Fetching accounts...');
+        const accountsRes = await api.get('/accounts');
+        const accounts = accountsRes.data.data || [];
+        console.log('✅ Accounts fetched:', accounts.length);
 
-        const accounts = accountsRes?.data?.data || mockAccounts;
-        const customers = customersRes?.data?.data || mockCustomers;
-        const collectors = collectorsRes?.data?.data || mockCollectors;
-        const plans = plansRes?.data?.data || mockPlans;
+        console.log('2. Fetching customers...');
+        const customersRes = await api.get('/customers');
+        const customers = customersRes.data.data || [];
+        console.log('✅ Customers fetched:', customers.length);
 
-        // Calculate stats
+        console.log('3. Fetching collectors...');
+        const collectorsRes = await api.get('/collectors');
+        const collectors = collectorsRes.data.data || [];
+        console.log('✅ Collectors fetched:', collectors.length);
+
+        console.log('4. Fetching plans...');
+        const plansRes = await api.get('/plans');
+        const plans = plansRes.data.data || [];
+        console.log('✅ Plans fetched:', plans.length);
+
+        // Calculate stats with real data
         const calculatedStats = calculateDashboardStats(accounts, customers, collectors);
         setStats(calculatedStats);
 
-        // Prepare plan distribution data
+        // Prepare plan distribution with real data
         const planDistribution = plans.map(plan => ({
           name: plan.name,
-          accounts: accounts.filter(acc => acc.planId?.name === plan.name).length,
-          amount: plan.amount,
+          accounts: accounts.filter(acc => acc.planId?._id === plan._id).length,
+          amount: plan.amount || plan.dailyAmount,
           percentage: accounts.length > 0 ? 
-            ((accounts.filter(acc => acc.planId?.name === plan.name).length / accounts.length) * 100).toFixed(1) : 0
+            ((accounts.filter(acc => acc.planId?._id === plan._id).length / accounts.length) * 100).toFixed(1) : 0
         }));
         
         setPlanData(planDistribution);
 
-      } catch (error) {
-        console.error("Error in API calls:", error);
-        // Use mock data as fallback
-        const calculatedStats = calculateDashboardStats(mockAccounts, mockCustomers, mockCollectors);
-        setStats(calculatedStats);
+        console.log('✅ Dashboard data loaded successfully with real data');
+
+      } catch (apiError) {
+        console.error('❌ API call failed:', apiError.response?.data || apiError.message);
         
-        const planDistribution = mockPlans.map(plan => ({
-          name: plan.name,
-          accounts: mockAccounts.filter(acc => acc.planId?.name === plan.name).length,
-          amount: plan.amount,
-          percentage: 33.3
-        }));
-        setPlanData(planDistribution);
+        if (apiError.response?.status === 401) {
+          console.log('🔐 401 Unauthorized - Token might be invalid');
+        }
+        
+        // Fallback to mock data
+        useMockDataOnly();
       }
 
     } catch (error) {
-      console.error("Error fetching dashboard data:", error);
+      console.error('💥 Unexpected error in fetchData:', error);
+      useMockDataOnly();
     } finally {
       setLoading(false);
     }
+  };
+
+  // Mock data fallback function
+  const useMockDataOnly = () => {
+    console.log('🔄 Using mock data as fallback');
+    
+    const mockAccounts = [
+      { _id: '1', status: 'active', dailyAmount: 100, planId: { name: 'Basic Plan' } },
+      { _id: '2', status: 'active', dailyAmount: 150, planId: { name: 'Premium Plan' } },
+      { _id: '3', status: 'inactive', dailyAmount: 200, planId: { name: 'Basic Plan' } }
+    ];
+    
+    const mockCustomers = [
+      { _id: '1', name: 'Customer 1' },
+      { _id: '2', name: 'Customer 2' },
+      { _id: '3', name: 'Customer 3' }
+    ];
+    
+    const mockCollectors = [
+      { _id: '1', name: 'Collector 1' },
+      { _id: '2', name: 'Collector 2' }
+    ];
+
+    const calculatedStats = calculateDashboardStats(mockAccounts, mockCustomers, mockCollectors);
+    setStats(calculatedStats);
+    
+    const mockPlans = [
+      { _id: '1', name: 'Basic Plan', amount: 100 },
+      { _id: '2', name: 'Premium Plan', amount: 150 },
+      { _id: '3', name: 'Gold Plan', amount: 200 }
+    ];
+    
+    setPlanData(mockPlans.map(plan => ({
+      name: plan.name,
+      accounts: mockAccounts.filter(acc => acc.planId?.name === plan.name).length,
+      amount: plan.amount,
+      percentage: 33.3
+    })));
+  };
+
+  // Add a manual refresh function
+  const handleRefresh = () => {
+    console.log('🔄 Manual refresh triggered');
+    fetchData();
+  };
+
+  // Add token debug function
+  const debugToken = () => {
+    const token = localStorage.getItem('adminToken');
+    console.log('🔍 Token debug:', {
+      exists: !!token,
+      length: token ? token.length : 0,
+      preview: token ? token.substring(0, 50) + '...' : 'None'
+    });
+    alert(`Token exists: ${!!token}\nLength: ${token ? token.length : 0}`);
   };
 
   const statsCards = [
@@ -196,9 +253,27 @@ const AdminDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-gray-600 mt-2">Overview of your pigmy business</p>
+        {/* Header with refresh button */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+            <p className="text-gray-600 mt-2">Overview of your pigmy business</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={debugToken}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg transition-colors text-sm"
+            >
+              Debug Token
+            </button>
+            <button
+              onClick={handleRefresh}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Stats Grid */}

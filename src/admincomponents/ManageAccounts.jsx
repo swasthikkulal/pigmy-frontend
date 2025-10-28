@@ -24,11 +24,11 @@ import {
   getAccounts,
   createAccount,
   updateAccount,
-  getCustomers,
   getCollectors,
   getPlans,
   getTransactions,
 } from "../services/api";
+import axios from "axios";
 
 const ManageAccounts = () => {
   const [accounts, setAccounts] = useState([]);
@@ -60,29 +60,35 @@ const ManageAccounts = () => {
   // Helper functions for plan objects
   const getPlanTypeFromPlan = (plan) => {
     if (!plan) return "monthly";
-    return plan.type || plan.planType || 
-           (plan.name?.toLowerCase().includes('weekly') ? 'weekly' : 
-            plan.name?.toLowerCase().includes('daily') ? 'daily' : 'monthly');
+    return (
+      plan.type ||
+      plan.planType ||
+      (plan.name?.toLowerCase().includes("weekly")
+        ? "weekly"
+        : plan.name?.toLowerCase().includes("daily")
+        ? "daily"
+        : "monthly")
+    );
   };
 
   const getAmountLabelFromPlan = (plan) => {
     const planType = getPlanTypeFromPlan(plan);
-    return planType === 'weekly' ? 'week' : 'day';
+    return planType === "weekly" ? "week" : "day";
   };
 
   const getDurationDisplayFromPlan = (plan) => {
     if (!plan) return "";
-    
+
     const duration = plan.duration || plan.term;
     const planType = getPlanTypeFromPlan(plan);
-    
+
     switch (planType.toLowerCase()) {
       case "daily":
-        return `${duration} day${duration > 1 ? 's' : ''}`;
+        return `${duration} day${duration > 1 ? "s" : ""}`;
       case "weekly":
-        return `${duration} week${duration > 1 ? 's' : ''}`;
+        return `${duration} week${duration > 1 ? "s" : ""}`;
       case "monthly":
-        return `${duration} month${duration > 1 ? 's' : ''}`;
+        return `${duration} month${duration > 1 ? "s" : ""}`;
       default:
         return `${duration} months`;
     }
@@ -91,39 +97,42 @@ const ManageAccounts = () => {
   // Helper functions for account objects
   const getPlanTypeFromAccount = (account) => {
     if (!account) return "monthly";
-    
+
     // Use accountType from your schema
     if (account.accountType) return account.accountType;
     if (account.planId?.type) return account.planId.type;
-    
+
     // Check plan name for keywords
-    const planName = account.planId?.name?.toLowerCase() || account.planName?.toLowerCase() || "";
-    if (planName.includes('weekly')) return 'weekly';
-    if (planName.includes('daily')) return 'daily';
-    if (planName.includes('monthly')) return 'monthly';
-    
+    const planName =
+      account.planId?.name?.toLowerCase() ||
+      account.planName?.toLowerCase() ||
+      "";
+    if (planName.includes("weekly")) return "weekly";
+    if (planName.includes("daily")) return "daily";
+    if (planName.includes("monthly")) return "monthly";
+
     // Default fallback
     return "monthly";
   };
 
   const getAmountLabelFromAccount = (account) => {
     const planType = getPlanTypeFromAccount(account);
-    return planType === 'weekly' ? 'week' : 'day';
+    return planType === "weekly" ? "week" : "day";
   };
 
   const getDurationDisplayFromAccount = (account) => {
     if (!account) return "";
-    
+
     const duration = account.duration || account.planId?.duration;
     const planType = getPlanTypeFromAccount(account);
-    
+
     switch (planType.toLowerCase()) {
       case "daily":
-        return `${duration} day${duration > 1 ? 's' : ''}`;
+        return `${duration} day${duration > 1 ? "s" : ""}`;
       case "weekly":
-        return `${duration} week${duration > 1 ? 's' : ''}`;
+        return `${duration} week${duration > 1 ? "s" : ""}`;
       case "monthly":
-        return `${duration} month${duration > 1 ? 's' : ''}`;
+        return `${duration} month${duration > 1 ? "s" : ""}`;
       default:
         return `${duration} months`;
     }
@@ -148,13 +157,13 @@ const ManageAccounts = () => {
     const start = new Date(startDate);
     const maturity = new Date(start);
     const durationValue = parseInt(duration);
-    
+
     switch (planType?.toLowerCase()) {
       case "daily":
         maturity.setDate(maturity.getDate() + durationValue);
         break;
       case "weekly":
-        maturity.setDate(maturity.getDate() + (durationValue * 7));
+        maturity.setDate(maturity.getDate() + durationValue * 7);
         break;
       case "monthly":
         maturity.setMonth(maturity.getMonth() + durationValue);
@@ -210,20 +219,25 @@ const ManageAccounts = () => {
     const startDate = new Date(account.startDate);
     const today = new Date();
     const planType = getPlanTypeFromAccount(account);
-    
+
     let expectedDeposits = 0;
     switch (planType.toLowerCase()) {
       case "daily":
-        const daysPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+        const daysPassed = Math.floor(
+          (today - startDate) / (1000 * 60 * 60 * 24)
+        );
         expectedDeposits = Math.max(0, daysPassed);
         break;
       case "weekly":
-        const weeksPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24 * 7));
+        const weeksPassed = Math.floor(
+          (today - startDate) / (1000 * 60 * 60 * 24 * 7)
+        );
         expectedDeposits = Math.max(0, weeksPassed);
         break;
       case "monthly":
-        const monthsPassed = (today.getFullYear() - startDate.getFullYear()) * 12 + 
-                           (today.getMonth() - startDate.getMonth());
+        const monthsPassed =
+          (today.getFullYear() - startDate.getFullYear()) * 12 +
+          (today.getMonth() - startDate.getMonth());
         expectedDeposits = Math.max(0, monthsPassed);
         break;
       default:
@@ -308,7 +322,7 @@ const ManageAccounts = () => {
             amount: 100,
             interestRate: 7.0,
             duration: "12",
-            type: "monthly"
+            type: "monthly",
           },
           accountType: "monthly",
           dailyAmount: 100,
@@ -350,7 +364,7 @@ const ManageAccounts = () => {
             amount: 500,
             interestRate: 6.5,
             duration: "4",
-            type: "weekly"
+            type: "weekly",
           },
           accountType: "weekly",
           dailyAmount: 500,
@@ -395,7 +409,7 @@ const ManageAccounts = () => {
             amount: 50,
             interestRate: 5.0,
             duration: "30",
-            type: "daily"
+            type: "daily",
           },
           accountType: "daily",
           dailyAmount: 50,
@@ -452,7 +466,7 @@ const ManageAccounts = () => {
           amount: 100,
           interestRate: 7.0,
           duration: "12",
-          type: "monthly"
+          type: "monthly",
         },
         {
           _id: "plan2",
@@ -460,7 +474,7 @@ const ManageAccounts = () => {
           amount: 500,
           interestRate: 6.5,
           duration: "4",
-          type: "weekly"
+          type: "weekly",
         },
         {
           _id: "plan3",
@@ -468,7 +482,7 @@ const ManageAccounts = () => {
           amount: 50,
           interestRate: 5.0,
           duration: "30",
-          type: "daily"
+          type: "daily",
         },
         {
           _id: "plan4",
@@ -476,34 +490,69 @@ const ManageAccounts = () => {
           amount: 200,
           interestRate: 10.0,
           duration: "12",
-          type: "monthly"
+          type: "monthly",
         },
       ];
 
       try {
-        const [
-          accountsRes,
-          customersRes,
-          collectorsRes,
-          plansRes,
-          transactionsRes,
-        ] = await Promise.all([
-          getAccounts().catch(() => ({ data: { data: mockAccounts } })),
-          getCustomers().catch(() => ({ data: { data: mockCustomers } })),
-          getCollectors().catch(() => ({ data: { data: mockCollectors } })),
-          getPlans().catch(() => ({ data: { data: mockPlans } })),
-          getTransactions().catch(() => ({ data: { data: [] } })),
-        ]);
+        // Use axios.get directly for customers with better error handling
+        let customersData = mockCustomers;
+        try {
+          const token = localStorage.getItem("adminToken");
+          console.log(token,"sdfvgbhnjmvbn")
+          const customersResponse = await axios.get(
+            "http://localhost:5000/api/customers",
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          console.log(
+            "Customers API Response:",
+            customersResponse.data.data,
+            "abcd"
+          );
+
+          // Handle different response structures
+          if (customersResponse.data && customersResponse.data) {
+            customersData = customersResponse.data.data;
+          } else if (
+            customersResponse.data &&
+            Array.isArray(customersResponse.data)
+          ) {
+            customersData = customersResponse.data;
+          } else if (
+            customersResponse.data &&
+            customersResponse.data.customers
+          ) {
+            customersData = customersResponse.data.customers;
+          }
+
+          console.log("Processed customers data:", customersData);
+        } catch (customerError) {
+          console.error("Error fetching customers:", customerError);
+          console.log("Using mock customers data");
+        }
+
+        setCustomers(customersData);
+
+        // Use existing API functions for other endpoints
+        const [accountsRes, collectorsRes, plansRes, transactionsRes] =
+          await Promise.all([
+            getAccounts().catch(() => ({ data: { data: mockAccounts } })),
+            getCollectors().catch(() => ({ data: { data: mockCollectors } })),
+            getPlans().catch(() => ({ data: { data: mockPlans } })),
+            getTransactions().catch(() => ({ data: { data: [] } })),
+          ]);
 
         setAccounts(accountsRes?.data?.data || mockAccounts);
-        setCustomers(customersRes?.data?.data || mockCustomers);
         setCollectors(collectorsRes?.data?.data || mockCollectors);
         setPlans(plansRes?.data?.data || mockPlans);
         setTransactions(transactionsRes?.data?.data || []);
       } catch (error) {
         console.error("Error in API calls:", error);
         setAccounts(mockAccounts);
-        setCustomers(mockCustomers);
         setCollectors(mockCollectors);
         setPlans(mockPlans);
         setTransactions([]);
@@ -516,80 +565,147 @@ const ManageAccounts = () => {
     }
   };
 
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   setSubmitLoading(true);
+
+  //   try {
+  //     const selectedPlan = plans.find((plan) => plan._id === formData.planId);
+  //     const selectedCustomer = customers.find(
+  //       (cust) => cust._id === formData.customerId
+  //     );
+  //     const selectedCollector = collectors.find(
+  //       (col) => col._id === formData.collectorId
+  //     );
+
+  //     // Use accountType from form data
+  //     const accountType =
+  //       formData.accountType || getPlanTypeFromPlan(selectedPlan) || "monthly";
+  //     const duration = selectedPlan?.duration || formData.duration;
+
+  //     // Prepare data for backend - use accountType to match your schema
+  //     const accountData = {
+  //       accountNumber: formData.accountNumber,
+  //       accountId: formData.accountNumber,
+  //       customerId: formData.customerId,
+  //       collectorId: formData.collectorId,
+  //       planId: formData.planId,
+  //       accountType: accountType,
+  //       dailyAmount: parseFloat(formData.dailyAmount),
+  //       startDate: formData.startDate,
+  //       duration: duration,
+  //       status: formData.status,
+  //       remarks: formData.remarks,
+  //       interestRate: selectedPlan?.interestRate || 6.5,
+  //       totalDays: calculateTotalDays(duration, accountType),
+  //       maturityDate: calculateMaturityDate(
+  //         formData.startDate,
+  //         duration,
+  //         accountType
+  //       ),
+  //       customerName: selectedCustomer?.name,
+  //       planName: selectedPlan?.name,
+  //       collectorName: selectedCollector?.name,
+  //       maturityStatus: "Pending",
+  //       createdBy: "Admin",
+  //       createdAt: new Date().toISOString(),
+  //     };
+
+  //     console.log("Sending account data:", accountData);
+
+  //     const response = await createAccount(accountData);
+
+  //     if (response.data.success) {
+  //       alert("Account created successfully!");
+  //       setShowModal(false);
+  //       resetForm();
+  //       fetchData();
+  //     } else {
+  //       alert(`Failed to create account: ${response.data.message}`);
+  //     }
+  //   } catch (error) {
+  //     console.error("Error creating account:", error);
+
+  //     if (error.response) {
+  //       const errorMessage =
+  //         error.response.data.message || error.response.data.error;
+  //       alert(`Error creating account: ${errorMessage}`);
+
+  //       if (error.response.data.errors) {
+  //         console.error("Validation errors:", error.response.data.errors);
+  //       }
+  //     } else {
+  //       alert("Account created successfully with demo data!");
+  //       setShowModal(false);
+  //       fetchData();
+  //     }
+  //   } finally {
+  //     setSubmitLoading(false);
+  //   }
+  // };
+
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitLoading(true);
+  e.preventDefault();
+  setSubmitLoading(true);
 
-    try {
-      const selectedPlan = plans.find((plan) => plan._id === formData.planId);
-      const selectedCustomer = customers.find(
-        (cust) => cust._id === formData.customerId
-      );
-      const selectedCollector = collectors.find(
-        (col) => col._id === formData.collectorId
-      );
+  try {
+    const selectedPlan = plans.find((plan) => plan._id === formData.planId);
+    const selectedCustomer = customers.find(
+      (cust) => cust._id === formData.customerId
+    );
+    const selectedCollector = collectors.find(
+      (col) => col._id === formData.collectorId
+    );
 
-      // Use accountType from form data
-      const accountType = formData.accountType || getPlanTypeFromPlan(selectedPlan) || "monthly";
-      const duration = selectedPlan?.duration || formData.duration;
+    // Use accountType from form data
+    const accountType =
+      formData.accountType || getPlanTypeFromPlan(selectedPlan) || "monthly";
+    const duration = selectedPlan?.duration || formData.duration;
 
-      // Prepare data for backend - use accountType to match your schema
-      const accountData = {
-        accountNumber: formData.accountNumber,
-        accountId: formData.accountNumber,
-        customerId: formData.customerId,
-        collectorId: formData.collectorId,
-        planId: formData.planId,
-        accountType: accountType,
-        dailyAmount: parseFloat(formData.dailyAmount),
-        startDate: formData.startDate,
-        duration: duration,
-        status: formData.status,
-        remarks: formData.remarks,
-        interestRate: selectedPlan?.interestRate || 6.5,
-        totalDays: calculateTotalDays(duration, accountType),
-        maturityDate: calculateMaturityDate(formData.startDate, duration, accountType),
-        customerName: selectedCustomer?.name,
-        planName: selectedPlan?.name,
-        collectorName: selectedCollector?.name,
-        maturityStatus: "Pending",
-        createdBy: "Admin",
-        createdAt: new Date().toISOString(),
-      };
+    // ✅ ONLY send the essential form data (no calculated fields, no accountId)
+    const accountData = {
+      accountNumber: formData.accountNumber,
+      customerId: formData.customerId,
+      collectorId: formData.collectorId,
+      planId: formData.planId,
+      accountType: accountType,
+      dailyAmount: parseFloat(formData.dailyAmount),
+      startDate: formData.startDate,
+      duration: duration,
+      status: formData.status,
+      remarks: formData.remarks || "",
+    };
 
-      console.log("Sending account data:", accountData);
+    console.log("Sending minimal account data:", accountData);
 
-      const response = await createAccount(accountData);
+    const response = await createAccount(accountData);
 
-      if (response.data.success) {
-        alert("Account created successfully!");
-        setShowModal(false);
-        resetForm();
-        fetchData();
-      } else {
-        alert(`Failed to create account: ${response.data.message}`);
-      }
-    } catch (error) {
-      console.error("Error creating account:", error);
-
-      if (error.response) {
-        const errorMessage =
-          error.response.data.message || error.response.data.error;
-        alert(`Error creating account: ${errorMessage}`);
-
-        if (error.response.data.errors) {
-          console.error("Validation errors:", error.response.data.errors);
-        }
-      } else {
-        alert("Account created successfully with demo data!");
-        setShowModal(false);
-        fetchData();
-      }
-    } finally {
-      setSubmitLoading(false);
+    if (response.data.success) {
+      alert("Account created successfully!");
+      setShowModal(false);
+      resetForm();
+      fetchData();
+    } else {
+      alert(`Failed to create account: ${response.data.message}`);
     }
-  };
-
+  } catch (error) {
+    console.error("Error creating account:", error);
+    
+    if (error.response) {
+      const errorMessage = error.response.data.message || error.response.data.error;
+      alert(`Error creating account: ${errorMessage}`);
+      
+      // If it's still the index error, run the fix script
+      if (errorMessage.includes('accountId_1')) {
+        alert('Please run the database fix script: node fixIndex.js');
+      }
+    } else {
+      alert("Network error. Please try again.");
+    }
+  } finally {
+    setSubmitLoading(false);
+  }
+};
   const resetForm = () => {
     setFormData({
       accountNumber: generateAccountNumber(),
@@ -788,7 +904,7 @@ const ManageAccounts = () => {
                 {filteredAccounts.map((account) => {
                   const stats = getAccountStats(account);
                   const amountLabel = getAmountLabelFromAccount(account);
-                  
+
                   return (
                     <tr key={account._id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -796,10 +912,12 @@ const ManageAccounts = () => {
                           {account.accountNumber || account.accountId}
                         </div>
                         <div className="text-sm text-gray-500">
-                          Start: {new Date(account.startDate).toLocaleDateString()}
+                          Start:{" "}
+                          {new Date(account.startDate).toLocaleDateString()}
                         </div>
                         <div className="text-xs text-gray-400">
-                          Matures: {new Date(stats.maturityDate).toLocaleDateString()}
+                          Matures:{" "}
+                          {new Date(stats.maturityDate).toLocaleDateString()}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -833,7 +951,8 @@ const ManageAccounts = () => {
                           ₹{account.dailyAmount}/{amountLabel}
                         </div>
                         <div className="text-xs text-gray-400">
-                          {account.interestRate}% • {getDurationDisplayFromAccount(account)}
+                          {account.interestRate}% •{" "}
+                          {getDurationDisplayFromAccount(account)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -929,12 +1048,21 @@ const ManageAccounts = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Select Customer</option>
-                      {customers.map((customer) => (
-                        <option key={customer._id} value={customer._id}>
-                          {customer.name} - {customer.phone}
+                      {customers.length > 0 ? (
+                        customers.map((customer) => (
+                          <option key={customer._id} value={customer._id}>
+                            {customer.name} - {customer.phone}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="" disabled>
+                          No customers available
                         </option>
-                      ))}
+                      )}
                     </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {customers.length} customer(s) available
+                    </p>
                   </div>
 
                   <div>
@@ -973,7 +1101,7 @@ const ManageAccounts = () => {
                           (plan) => plan._id === e.target.value
                         );
                         const planType = getPlanTypeFromPlan(selectedPlan);
-                        
+
                         setFormData({
                           ...formData,
                           planId: e.target.value,
@@ -987,7 +1115,9 @@ const ManageAccounts = () => {
                       <option value="">Select Plan</option>
                       {plans.map((plan) => (
                         <option key={plan._id} value={plan._id}>
-                          {plan.name} - ₹{plan.amount}/{getAmountLabelFromPlan(plan)} - {plan.interestRate}% - {getDurationDisplayFromPlan(plan)}
+                          {plan.name} - ₹{plan.amount}/
+                          {getAmountLabelFromPlan(plan)} - {plan.interestRate}%
+                          - {getDurationDisplayFromPlan(plan)}
                         </option>
                       ))}
                     </select>
@@ -995,7 +1125,9 @@ const ManageAccounts = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {formData.accountType === 'weekly' ? 'Weekly Amount (₹)' : 'Daily Amount (₹)'}
+                      {formData.accountType === "weekly"
+                        ? "Weekly Amount (₹)"
+                        : "Daily Amount (₹)"}
                     </label>
                     <input
                       type="number"
@@ -1010,7 +1142,9 @@ const ManageAccounts = () => {
                         })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={`Enter ${formData.accountType === 'weekly' ? 'weekly' : 'daily'} amount`}
+                      placeholder={`Enter ${
+                        formData.accountType === "weekly" ? "weekly" : "daily"
+                      } amount`}
                     />
                   </div>
 
@@ -1144,7 +1278,9 @@ const ManageAccounts = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm font-medium text-gray-600">
-                          {getAmountLabelFromAccount(selectedAccount) === 'week' ? 'Weekly Amount:' : 'Daily Amount:'}
+                          {getAmountLabelFromAccount(selectedAccount) === "week"
+                            ? "Weekly Amount:"
+                            : "Daily Amount:"}
                         </span>
                         <span className="text-sm text-gray-900">
                           ₹{selectedAccount.dailyAmount}
@@ -1178,9 +1314,11 @@ const ManageAccounts = () => {
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       {(() => {
                         const stats = getAccountStats(selectedAccount);
-                        const planType = getPlanTypeFromAccount(selectedAccount);
-                        const depositUnit = planType === 'weekly' ? 'weeks' : 'days';
-                        
+                        const planType =
+                          getPlanTypeFromAccount(selectedAccount);
+                        const depositUnit =
+                          planType === "weekly" ? "weeks" : "days";
+
                         return (
                           <>
                             <div className="flex justify-between">
