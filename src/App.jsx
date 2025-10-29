@@ -28,6 +28,11 @@ import Login from "./admincomponents/Login";
 // Customer Components
 import CustomerDashboard from "./components/CustomerDashboard";
 import CustomerProtectedRoute from "./components/CustomerProtectedRoute";
+import CollectorLogin from "./collectorcomponents/CollectorLogin";
+import CollectorDashboard from "./collectorcomponents/CollectorDashboard";
+import CollectorProfile from "./collectorcomponents/CollectorProfile";
+import CollectorCustomers from "./collectorcomponents/CollectorCustomers";
+import CollectorCollections from "./collectorcomponents/CollectorCollections";
 
 function App() {
   const [count, setCount] = useState(0);
@@ -79,10 +84,20 @@ function App() {
           </Route>
 
           {/* ✅ FIXED: Remove the conflicting /admin redirect route */}
-          
+
           {/* Other Redirects */}
-          <Route path="/customer" element={<Navigate to="/customer/dashboard" replace />} />
+          <Route
+            path="/customer"
+            element={<Navigate to="/customer/dashboard" replace />}
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
+
+          {/* collector route */}
+          <Route path="/collector/login" element={<CollectorLogin />} />
+          <Route path="/collector/dashboard" element={<CollectorDashboard />} />
+          <Route path="/collector/profile" element={<CollectorProfile />} />
+          <Route path="/collector/customers" element={<CollectorCustomers />} />
+          <Route path="/collector/collections" element={<CollectorCollections />} />
         </Routes>
       </BrowserRouter>
     </>

@@ -60,155 +60,64 @@ const AccountsPage = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // const loadCustomerAccounts = async () => {
-  //   try {
-  //     setLoading(true);
-  //     setError("");
+  const loadCustomerAccounts = async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-  //     const profileResponse = await getCustomerProfile();
-  //     const customerData = profileResponse.data.data;
-  //     setCustomer(customerData);
+      console.log("🔑 STEP 1: Checking localStorage...");
+      const customerToken = localStorage.getItem("customerToken");
+      console.log("📦 Customer token:", customerToken ? "EXISTS" : "MISSING");
 
-  //     const accountsResponse = await getAccountsByCustomer(customerData._id);
-  //     const accountsData = accountsResponse.data.data || [];
+      if (!customerToken) {
+        setError("Please login first");
+        return;
+      }
 
-  //     // Calculate current balance for each account
-  //     const updatedAccounts = accountsData.map((account) => {
-  //       const currentBalance = calculateCurrentBalance(account);
-  //       return {
-  //         ...account,
-  //         currentBalance,
-  //       };
-  //     });
+      console.log("🔑 STEP 2: Fetching customer profile...");
+      const profileResponse = await getCustomerProfile();
+      console.log("✅ Profile response:", profileResponse.data);
 
-  //     setAccounts(updatedAccounts);
-  //     calculatePendingPayments(updatedAccounts);
-  //     setLastUpdated(new Date());
-  //   } catch (error) {
-  //     console.error("Error loading customer accounts:", error);
-  //     setError("Failed to load your accounts. Please try again.");
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
+      const customerData = profileResponse.data.data;
+      setCustomer(customerData);
+      console.log("👤 Customer ID:", customerData._id);
 
-  // FIXED: Calculate current balance including completed cash payments
-//   const loadCustomerAccounts = async () => {
-//   try {
-//     setLoading(true);
-//     setError("");
+      console.log("🔑 STEP 3: Fetching customer accounts...");
+      const accountsResponse = await getAccountsByCustomer(customerData._id);
+      console.log("✅ Accounts response:", accountsResponse.data);
 
-//     console.log('🔑 Customer token before API calls:', localStorage.getItem('customerToken'));
+      const accountsData = accountsResponse.data.data || [];
+      console.log("📊 Accounts found:", accountsData.length);
 
-//     // Test each API call individually
-//     try {
-//       console.log('1. 📋 Fetching customer profile...');
-//       const profileResponse = await getCustomerProfile();
-//       console.log('✅ Profile fetched successfully');
-//       const customerData = profileResponse.data.data;
-//       console.log(customerData, "customerdata")
-//       setCustomer(customerData);
-//     } catch (profileError) {
-//       console.log('❌ Profile fetch failed:', profileError.response?.status, profileError.response?.data);
-//       throw profileError;
-//     }
+      const updatedAccounts = accountsData.map((account) => {
+        const currentBalance = calculateCurrentBalance(account);
+        return {
+          ...account,
+          currentBalance,
+        };
+      });
 
-//     try {
-//       console.log('2. 📊 Fetching customer accounts...');
-//       const accountsResponse = await getAccountsByCustomer(customerData._id);
-//       console.log('✅ Accounts fetched successfully');
-//       const accountsData = accountsResponse.data.data || [];
-
-//       // Calculate current balance for each account
-//       const updatedAccounts = accountsData.map((account) => {
-//         const currentBalance = calculateCurrentBalance(account);
-//         return {
-//           ...account,
-//           currentBalance,
-//         };
-//       });
-
-//       setAccounts(updatedAccounts);
-//       calculatePendingPayments(updatedAccounts);
-//       setLastUpdated(new Date());
-//     } catch (accountsError) {
-//       console.log('❌ Accounts fetch failed:', accountsError.response?.status, accountsError.response?.data);
-//       throw accountsError;
-//     }
-
-//     console.log('🔑 Customer token after API calls:', localStorage.getItem('customerToken'));
-
-//   } catch (error) {
-//     console.error("Error loading customer accounts:", error);
-//     console.log('🔑 Customer token after error:', localStorage.getItem('customerToken'));
-//     setError("Failed to load your accounts. Please try again.");
-//   } finally {
-//     setLoading(false);
-//   }
-// };
-const loadCustomerAccounts = async () => {
-  try {
-    setLoading(true);
-    setError("");
-
-    console.log('🔑 STEP 1: Checking localStorage...');
-    const customerToken = localStorage.getItem('customerToken');
-    console.log('📦 Customer token:', customerToken ? 'EXISTS' : 'MISSING');
-
-    if (!customerToken) {
-      setError("Please login first");
-      return;
+      setAccounts(updatedAccounts);
+      calculatePendingPayments(updatedAccounts);
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error("💥 Error loading customer accounts:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      setError("Failed to load your accounts. Please try again.");
+    } finally {
+      setLoading(false);
     }
+  };
 
-    console.log('🔑 STEP 2: Fetching customer profile...');
-    const profileResponse = await getCustomerProfile();
-    console.log('✅ Profile response:', profileResponse.data);
-    
-    // ✅ FIX: Store the customer data in a variable
-    const customerData = profileResponse.data.data;
-    setCustomer(customerData);
-    console.log('👤 Customer ID:', customerData._id);
-
-    console.log('🔑 STEP 3: Fetching customer accounts...');
-    // ✅ FIX: Now customerData is defined and accessible
-    const accountsResponse = await getAccountsByCustomer(customerData._id);
-    console.log('✅ Accounts response:', accountsResponse.data);
-    
-    const accountsData = accountsResponse.data.data || [];
-    console.log('📊 Accounts found:', accountsData.length);
-
-    const updatedAccounts = accountsData.map((account) => {
-      const currentBalance = calculateCurrentBalance(account);
-      return {
-        ...account,
-        currentBalance,
-      };
-    });
-
-    setAccounts(updatedAccounts);
-    calculatePendingPayments(updatedAccounts);
-    setLastUpdated(new Date());
-
-  } catch (error) {
-    console.error("💥 Error loading customer accounts:", {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status
-    });
-    setError("Failed to load your accounts. Please try again.");
-  } finally {
-    setLoading(false);
-  }
-};
-  
   const calculateCurrentBalance = (account) => {
     if (!account.transactions || account.transactions.length === 0) {
       return account.totalBalance || 0;
     }
 
-    // Sum ALL completed transactions (both online and verified cash payments)
     const totalAmount = account.transactions.reduce((sum, transaction) => {
-      // Include both completed online payments AND completed cash payments
       if (
         transaction.status === "completed" ||
         transaction.status === "verified"
@@ -240,7 +149,7 @@ const loadCustomerAccounts = async () => {
     };
   };
 
-  // Enhanced pending payment calculation
+  // FIXED: Enhanced pending payment calculation for weekly plans
   const calculatePendingPayments = (accountsData) => {
     const pending = {};
     const today = new Date();
@@ -256,7 +165,7 @@ const loadCustomerAccounts = async () => {
 
       const planType = getPlanTypeFromAccount(account);
       const transactions = account.transactions || [];
-      const openingDate = new Date(account.openingDate);
+      const openingDate = new Date(account.openingDate || account.startDate);
       openingDate.setHours(0, 0, 0, 0);
 
       const dailyAmount = account.dailyAmount || 0;
@@ -304,7 +213,7 @@ const loadCustomerAccounts = async () => {
         return;
       }
 
-      // Calculate pending periods based on plan type
+      // FIXED: Calculate pending periods based on plan type
       if (planType === "daily") {
         const checkDate = new Date(openingDate);
         let dayCount = 0;
@@ -354,11 +263,133 @@ const loadCustomerAccounts = async () => {
           checkDate.setDate(checkDate.getDate() + 1);
           dayCount++;
         }
+      } else if (planType === "weekly") {
+        // FIXED: Weekly plan calculation
+        const checkDate = new Date(openingDate);
+        let weekCount = 0;
+        const processedWeeks = new Set();
+
+        while (checkDate <= today && weekCount < duration) {
+          const weekStart = new Date(checkDate);
+          const weekEnd = new Date(checkDate);
+          weekEnd.setDate(weekEnd.getDate() + 6); // Week ends 6 days later
+
+          const weekKey = `week-${weekStart.toISOString().split("T")[0]}`;
+          const periodId = weekKey;
+
+          if (processedWeeks.has(weekKey)) {
+            checkDate.setDate(checkDate.getDate() + 7);
+            weekCount++;
+            continue;
+          }
+
+          processedWeeks.add(weekKey);
+
+          // Check if there's any transaction in this week
+          const hasTransactionForWeek = transactions.some((transaction) => {
+            if (!transaction.date) return false;
+            const transactionDate = new Date(transaction.date);
+            return (
+              transactionDate >= weekStart &&
+              transactionDate <= weekEnd &&
+              (transaction.status === "completed" ||
+                transaction.status === "verified")
+            );
+          });
+
+          const isPeriodPaid = paidPeriodIds.has(periodId);
+
+          if (!hasTransactionForWeek && !isPeriodPaid) {
+            const potentialPendingAmount = pendingAmount + dailyAmount;
+            if (potentialPendingAmount <= remainingMaturityAmount) {
+              pendingAmount += dailyAmount;
+              pendingCount += 1;
+              missedPeriods.push({
+                date: new Date(weekStart),
+                amount: dailyAmount,
+                type: "week",
+                periodId: periodId,
+                weekStart: new Date(weekStart),
+                weekEnd: new Date(weekEnd),
+              });
+            }
+          }
+
+          checkDate.setDate(checkDate.getDate() + 7);
+          weekCount++;
+        }
+      } else if (planType === "monthly") {
+        // Monthly plan calculation
+        const checkDate = new Date(openingDate);
+        let monthCount = 0;
+        const processedMonths = new Set();
+
+        while (checkDate <= today && monthCount < duration) {
+          const monthStart = new Date(
+            checkDate.getFullYear(),
+            checkDate.getMonth(),
+            1
+          );
+          const monthEnd = new Date(
+            checkDate.getFullYear(),
+            checkDate.getMonth() + 1,
+            0
+          );
+          monthEnd.setHours(23, 59, 59, 999);
+
+          const monthKey = `month-${monthStart.getFullYear()}-${
+            monthStart.getMonth() + 1
+          }`;
+          const periodId = monthKey;
+
+          if (processedMonths.has(monthKey)) {
+            checkDate.setMonth(checkDate.getMonth() + 1);
+            monthCount++;
+            continue;
+          }
+
+          processedMonths.add(monthKey);
+
+          // Check if there's any transaction in this month
+          const hasTransactionForMonth = transactions.some((transaction) => {
+            if (!transaction.date) return false;
+            const transactionDate = new Date(transaction.date);
+            return (
+              transactionDate >= monthStart &&
+              transactionDate <= monthEnd &&
+              (transaction.status === "completed" ||
+                transaction.status === "verified")
+            );
+          });
+
+          const isPeriodPaid = paidPeriodIds.has(periodId);
+
+          if (!hasTransactionForMonth && !isPeriodPaid) {
+            const potentialPendingAmount = pendingAmount + dailyAmount;
+            if (potentialPendingAmount <= remainingMaturityAmount) {
+              pendingAmount += dailyAmount;
+              pendingCount += 1;
+              missedPeriods.push({
+                date: new Date(monthStart),
+                amount: dailyAmount,
+                type: "month",
+                periodId: periodId,
+                monthStart: new Date(monthStart),
+                monthEnd: new Date(monthEnd),
+              });
+            }
+          }
+
+          checkDate.setMonth(checkDate.getMonth() + 1);
+          monthCount++;
+        }
       }
 
+      // FIXED: Calculate pending days based on plan type
       const pendingDays = calculatePendingDays(
         account,
-        remainingMaturityAmount
+        remainingMaturityAmount,
+        planType
       );
 
       pending[account._id] = {
@@ -374,21 +405,37 @@ const loadCustomerAccounts = async () => {
         missedPeriods,
         pendingDays,
         maturityCalculation,
+        planType: planType, // Add plan type for easier access
       };
     });
 
     setPendingPayments(pending);
   };
 
-  const calculatePendingDays = (account, remainingMaturityAmount) => {
+  // FIXED: Enhanced calculatePendingDays function to handle different plan types
+  const calculatePendingDays = (account, remainingMaturityAmount, planType) => {
     const dailyAmount = account.dailyAmount || 0;
     if (dailyAmount <= 0) return 0;
-    return Math.ceil(remainingMaturityAmount / dailyAmount);
+
+    switch (planType) {
+      case "daily":
+        return Math.ceil(remainingMaturityAmount / dailyAmount);
+      case "weekly":
+        // For weekly plans, convert to weeks first, then to days for display
+        const weeksNeeded = Math.ceil(remainingMaturityAmount / dailyAmount);
+        return weeksNeeded * 7; // Return as days for consistent display
+      case "monthly":
+        // For monthly plans, convert to months first, then to days for display
+        const monthsNeeded = Math.ceil(remainingMaturityAmount / dailyAmount);
+        return monthsNeeded * 30; // Return as days for consistent display
+      default:
+        return Math.ceil(remainingMaturityAmount / dailyAmount);
+    }
   };
 
   const getPendingTimeDisplay = (account, pending) => {
     if (!pending) return "";
-    const planType = getPlanTypeFromAccount(account);
+    const planType = pending.planType || getPlanTypeFromAccount(account);
     const pendingDays = pending.pendingDays || 0;
 
     switch (planType) {
@@ -456,17 +503,72 @@ const loadCustomerAccounts = async () => {
     return "REF-" + Math.random().toString(36).substr(2, 9).toUpperCase();
   };
 
+  // const loadPaymentHistory = async (accountId) => {
+  //   try {
+  //     const response = await getPaymentHistory(accountId);
+  //     const historyData = response.data.data || [];
+  //     const sortedHistory = historyData.sort(
+  //       (a, b) => new Date(b.date) - new Date(a.date)
+  //     );
+  //     setPaymentHistory(sortedHistory);
+  //   } catch (error) {
+  //     console.error("Error loading payment history:", error);
+  //     setPaymentHistory([]);
+  //   }
+  // };
   const loadPaymentHistory = async (accountId) => {
     try {
+      console.log("📋 Loading payment history for account:", accountId);
+
       const response = await getPaymentHistory(accountId);
-      const historyData = response.data.data || [];
+      console.log("📊 Payment history API response:", response.data);
+
+      // Handle different response structures
+      let historyData = [];
+
+      if (response.data && response.data.data) {
+        historyData = response.data.data;
+      } else if (response.data && Array.isArray(response.data)) {
+        historyData = response.data;
+      } else if (response.data && response.data.payments) {
+        historyData = response.data.payments;
+      } else if (response.data && response.data.transactions) {
+        historyData = response.data.transactions;
+      }
+
+      console.log("📈 Processed payment history data:", historyData);
+
+      // Sort by date descending (newest first)
       const sortedHistory = historyData.sort(
-        (a, b) => new Date(b.date) - new Date(a.date)
+        (a, b) =>
+          new Date(b.date || b.createdAt || b.transactionDate) -
+          new Date(a.date || a.createdAt || a.transactionDate)
       );
+
       setPaymentHistory(sortedHistory);
     } catch (error) {
-      console.error("Error loading payment history:", error);
-      setPaymentHistory([]);
+      console.error("❌ Error loading payment history:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+
+      // Fallback: Try to get transactions from account data
+      try {
+        const account = accounts.find((acc) => acc._id === accountId);
+        if (account && account.transactions) {
+          console.log("🔄 Using account transactions as fallback");
+          const transactions = account.transactions
+            .filter((t) => t.type === "deposit")
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+          setPaymentHistory(transactions);
+        } else {
+          setPaymentHistory([]);
+        }
+      } catch (fallbackError) {
+        console.error("❌ Fallback also failed:", fallbackError);
+        setPaymentHistory([]);
+      }
     }
   };
 
@@ -485,6 +587,61 @@ const loadCustomerAccounts = async () => {
     }
   };
 
+  // const handlePayment = (account) => {
+  //   const pending = pendingPayments[account._id];
+
+  //   if (pending?.isMaturityReached) {
+  //     alert(
+  //       "Congratulations! You have reached the maturity amount for this account. No further payments are required."
+  //     );
+  //     return;
+  //   }
+
+  //   if (pending && pending.hasPending) {
+  //     const planType = pending.planType || getPlanTypeFromAccount(account);
+  //     const pendingTimeDisplay = getPendingTimeDisplay(account, pending);
+  //     const confirmMessage = `You have ${
+  //       pending.count
+  //     } pending ${planType} payment${pending.count > 1 ? "s" : ""} totaling ₹${
+  //       pending.amount
+  //     }. \n\nApproximately ${pendingTimeDisplay} remaining to reach maturity.\n\nDo you want to pay the pending amount of ₹${
+  //       pending.amount
+  //     } instead of the regular ${planType} amount of ₹${account.dailyAmount}?`;
+
+  //     if (window.confirm(confirmMessage)) {
+  //       setSelectedAccount({
+  //         ...account,
+  //         pendingAmount: pending.amount,
+  //         isPendingPayment: true,
+  //         maturityAmount: pending.maturityAmount,
+  //         totalPaidAmount: pending.totalPaidAmount,
+  //         remainingMaturityAmount: pending.remainingMaturityAmount,
+  //         pendingDetails: pending,
+  //       });
+  //     } else {
+  //       setSelectedAccount({
+  //         ...account,
+  //         maturityAmount: pending.maturityAmount,
+  //         totalPaidAmount: pending.totalPaidAmount,
+  //         remainingMaturityAmount: pending.remainingMaturityAmount,
+  //         pendingDetails: pending,
+  //       });
+  //     }
+  //   } else {
+  //     setSelectedAccount({
+  //       ...account,
+  //       maturityAmount: pending?.maturityAmount || 0,
+  //       totalPaidAmount: pending?.totalPaidAmount || 0,
+  //       remainingMaturityAmount: pending?.remainingMaturityAmount || 0,
+  //       pendingDetails: pending,
+  //     });
+  //   }
+
+  //   setReferenceNumber(generateReferenceNumber());
+  //   setCustomAmount("");
+  //   setIsCustomPayment(false);
+  //   setShowPaymentModal(true);
+  // };
   const handlePayment = (account) => {
     const pending = pendingPayments[account._id];
 
@@ -496,7 +653,7 @@ const loadCustomerAccounts = async () => {
     }
 
     if (pending && pending.hasPending) {
-      const planType = getPlanTypeFromAccount(account);
+      const planType = pending.planType || getPlanTypeFromAccount(account);
       const pendingTimeDisplay = getPendingTimeDisplay(account, pending);
       const confirmMessage = `You have ${
         pending.count
@@ -515,6 +672,8 @@ const loadCustomerAccounts = async () => {
           totalPaidAmount: pending.totalPaidAmount,
           remainingMaturityAmount: pending.remainingMaturityAmount,
           pendingDetails: pending,
+          // Ensure collectorId is passed through
+          collectorId: account.collectorId,
         });
       } else {
         setSelectedAccount({
@@ -523,6 +682,8 @@ const loadCustomerAccounts = async () => {
           totalPaidAmount: pending.totalPaidAmount,
           remainingMaturityAmount: pending.remainingMaturityAmount,
           pendingDetails: pending,
+          // Ensure collectorId is passed through
+          collectorId: account.collectorId,
         });
       }
     } else {
@@ -532,6 +693,8 @@ const loadCustomerAccounts = async () => {
         totalPaidAmount: pending?.totalPaidAmount || 0,
         remainingMaturityAmount: pending?.remainingMaturityAmount || 0,
         pendingDetails: pending,
+        // Ensure collectorId is passed through
+        collectorId: account.collectorId,
       });
     }
 
@@ -540,7 +703,6 @@ const loadCustomerAccounts = async () => {
     setIsCustomPayment(false);
     setShowPaymentModal(true);
   };
-
   const calculateCoveredPeriods = (pending, paymentAmount) => {
     if (!pending?.missedPeriods || paymentAmount <= 0) return [];
     let coveredAmount = 0;
@@ -577,6 +739,168 @@ const loadCustomerAccounts = async () => {
     }
   };
 
+  // const handleProcessPayment = async () => {
+  //   try {
+  //     setProcessingPayment(true);
+
+  //     if (paymentMethod === "online" && !referenceNumber.trim()) {
+  //       alert("Please enter a reference number for online payment");
+  //       return;
+  //     }
+
+  //     let paymentAmount;
+  //     let isPartialPayment = false;
+  //     let remainingPendingAmount = 0;
+
+  //     const pending = pendingPayments[selectedAccount._id];
+  //     const maxPendingAmount =
+  //       pending?.amount || selectedAccount.dailyAmount || 0;
+  //     const minAmount = selectedAccount.dailyAmount || 0;
+
+  //     if (isCustomPayment && customAmount) {
+  //       const enteredAmount = parseFloat(customAmount);
+
+  //       if (isNaN(enteredAmount) || enteredAmount < minAmount) {
+  //         alert(`Minimum payment amount is ₹${minAmount}`);
+  //         return;
+  //       }
+
+  //       if (enteredAmount > maxPendingAmount) {
+  //         alert(
+  //           `Payment amount cannot exceed pending amount of ₹${maxPendingAmount}`
+  //         );
+  //         return;
+  //       }
+
+  //       if (enteredAmount > pending.remainingMaturityAmount) {
+  //         alert(
+  //           `Payment amount cannot exceed remaining maturity amount of ₹${pending.remainingMaturityAmount}`
+  //         );
+  //         return;
+  //       }
+
+  //       if (!isValidMultiple(enteredAmount, minAmount)) {
+  //         const validMultiples = getValidMultiples(minAmount, maxPendingAmount);
+  //         alert(
+  //           `Please enter a valid multiple of ₹${minAmount}. Valid amounts are: ${validMultiples.join(
+  //             ", "
+  //           )}`
+  //         );
+  //         return;
+  //       }
+
+  //       paymentAmount = enteredAmount;
+  //       isPartialPayment = paymentAmount < maxPendingAmount;
+  //       remainingPendingAmount = maxPendingAmount - paymentAmount;
+  //     } else {
+  //       paymentAmount = maxPendingAmount;
+  //       if (paymentAmount > pending.remainingMaturityAmount) {
+  //         paymentAmount = pending.remainingMaturityAmount;
+  //         isPartialPayment = true;
+  //         remainingPendingAmount = 0;
+  //       }
+  //     }
+
+  //     const coveredPeriods = calculateCoveredPeriods(pending, paymentAmount);
+  //     const isPendingPayment = selectedAccount.isPendingPayment;
+  //     const paymentStatus = paymentMethod === "cash" ? "pending" : "completed";
+
+  //     const paymentData = {
+  //       accountId: selectedAccount._id,
+  //       customerId: customer._id,
+  //       amount: paymentAmount,
+  //       paymentMethod: paymentMethod,
+  //       referenceNumber: referenceNumber,
+  //       status: paymentStatus,
+  //       isPendingPayment: isPendingPayment,
+  //       isPartialPayment: isPartialPayment,
+  //       remainingPendingAmount: remainingPendingAmount,
+  //       type: "deposit",
+  //       date: new Date().toISOString(),
+  //       paymentPeriod: isPendingPayment ? "pending" : "current",
+  //       maturityAmount: pending.maturityAmount,
+  //       totalPaidAmount: pending.totalPaidAmount,
+  //       coveredPeriods: coveredPeriods,
+  //     };
+
+  //     const response = await processPayment(paymentData);
+
+  //     if (response.data.success) {
+  //       // Store paid periods in localStorage
+  //       const storedPaidPeriods = JSON.parse(
+  //         localStorage.getItem("paidPeriods") || "{}"
+  //       );
+  //       storedPaidPeriods[selectedAccount._id] = [
+  //         ...(storedPaidPeriods[selectedAccount._id] || []),
+  //         ...coveredPeriods.map((period) => ({
+  //           periodId: period.periodId,
+  //           date: period.date,
+  //           amount: period.amount,
+  //           type: period.type,
+  //           paymentDate: new Date().toISOString(),
+  //           paymentAmount: paymentAmount,
+  //         })),
+  //       ];
+  //       localStorage.setItem("paidPeriods", JSON.stringify(storedPaidPeriods));
+  //       setPaidPeriodsMap(storedPaidPeriods);
+
+  //       let alertMessage = "";
+  //       if (paymentMethod === "cash") {
+  //         if (isPartialPayment) {
+  //           alertMessage = `Partial cash payment recorded as PENDING!\nReference: ${referenceNumber}\nAmount Paid: ₹${paymentAmount}\nRemaining Pending: ₹${remainingPendingAmount}\nStatus: ${paymentStatus}\n\nOur collector will verify and mark this payment as completed.`;
+  //         } else {
+  //           alertMessage = `Cash payment recorded as PENDING!\nReference: ${referenceNumber}\nAmount: ₹${paymentAmount}\nStatus: ${paymentStatus}\n\nOur collector will verify and mark this payment as completed.`;
+  //         }
+  //         alertMessage += `\n\n💰 The amount ₹${paymentAmount} will be added to your current balance ONLY AFTER the collector verifies and marks it as completed.`;
+  //       } else {
+  //         if (isPartialPayment) {
+  //           alertMessage = `Partial online payment completed successfully!\nReference: ${referenceNumber}\nAmount Paid: ₹${paymentAmount}\nRemaining Pending: ₹${remainingPendingAmount}\nStatus: ${paymentStatus}`;
+  //         } else {
+  //           alertMessage = `Online payment completed successfully!\nReference: ${referenceNumber}\nAmount: ₹${paymentAmount}\nStatus: ${paymentStatus}`;
+  //         }
+  //         alertMessage += `\n\n💰 The amount ₹${paymentAmount} has been added to your current balance.`;
+  //       }
+
+  //       if (coveredPeriods.length > 0) {
+  //         const periodType = pending.planType || getPlanTypeFromAccount(selectedAccount);
+  //         alertMessage += `\n\nThis payment covers ${
+  //           coveredPeriods.length
+  //         } ${periodType}${coveredPeriods.length > 1 ? "s" : ""}:`;
+  //         coveredPeriods.forEach((period) => {
+  //           const dateStr = period.date.toLocaleDateString();
+  //           alertMessage += `\n• ${dateStr} - ₹${period.amount}`;
+  //         });
+
+  //         if (isPartialPayment && remainingPendingAmount > 0) {
+  //           alertMessage += `\n\nRemaining pending: ${
+  //             pending.missedPeriods.length - coveredPeriods.length
+  //           } ${periodType}${
+  //             pending.missedPeriods.length - coveredPeriods.length > 1
+  //               ? "s"
+  //               : ""
+  //           } (₹${remainingPendingAmount})`;
+  //         }
+  //       }
+
+  //       const newTotalPaid = pending.totalPaidAmount + paymentAmount;
+  //       if (newTotalPaid >= pending.maturityAmount) {
+  //         alertMessage += `\n\n🎉 Congratulations! You have reached the maturity amount of ₹${pending.maturityAmount}!`;
+  //       }
+
+  //       alert(alertMessage);
+
+  //       handleClosePaymentModal();
+  //       await loadCustomerAccounts(); // Refresh to get updated data
+  //     } else {
+  //       throw new Error("Payment processing failed");
+  //     }
+  //   } catch (error) {
+  //     console.error("Payment error:", error);
+  //     alert("Payment failed. Please try again.");
+  //   } finally {
+  //     setProcessingPayment(false);
+  //   }
+  // };
   const handleProcessPayment = async () => {
     try {
       setProcessingPayment(true);
@@ -643,6 +967,10 @@ const loadCustomerAccounts = async () => {
       const isPendingPayment = selectedAccount.isPendingPayment;
       const paymentStatus = paymentMethod === "cash" ? "pending" : "completed";
 
+      // STEP 1: Get collectorId from the selected account
+      const collectorId =
+        selectedAccount.collectorId?._id || selectedAccount.collectorId;
+
       const paymentData = {
         accountId: selectedAccount._id,
         customerId: customer._id,
@@ -659,7 +987,14 @@ const loadCustomerAccounts = async () => {
         maturityAmount: pending.maturityAmount,
         totalPaidAmount: pending.totalPaidAmount,
         coveredPeriods: coveredPeriods,
+        // STEP 2: Add collectorId to payment data
+        collectorId: collectorId,
       };
+
+      console.log("💰 Payment data being sent:", {
+        ...paymentData,
+        collectorId: collectorId ? "PRESENT" : "MISSING",
+      });
 
       const response = await processPayment(paymentData);
 
@@ -700,7 +1035,8 @@ const loadCustomerAccounts = async () => {
         }
 
         if (coveredPeriods.length > 0) {
-          const periodType = getPlanTypeFromAccount(selectedAccount);
+          const periodType =
+            pending.planType || getPlanTypeFromAccount(selectedAccount);
           alertMessage += `\n\nThis payment covers ${
             coveredPeriods.length
           } ${periodType}${coveredPeriods.length > 1 ? "s" : ""}:`;
@@ -739,7 +1075,6 @@ const loadCustomerAccounts = async () => {
       setProcessingPayment(false);
     }
   };
-
   useEffect(() => {
     if (
       showPaymentModal &&
@@ -1009,7 +1344,9 @@ const loadCustomerAccounts = async () => {
                       </div>
                       <p className="text-sm text-red-700 mb-2">
                         {pending.count} pending{" "}
-                        {getPlanTypeFromAccount(selectedAccount)} payment
+                        {pending.planType ||
+                          getPlanTypeFromAccount(selectedAccount)}{" "}
+                        payment
                         {pending.count > 1 ? "s" : ""} - ₹{pending.amount}
                       </p>
                       {pending.missedPeriods &&
@@ -1366,7 +1703,8 @@ const loadCustomerAccounts = async () => {
                         placeholder="Enter UTR/Transaction ID"
                         className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                       />
-                      <button hidden
+                      <button
+                        hidden
                         onClick={() =>
                           setReferenceNumber(generateReferenceNumber())
                         }
@@ -1466,10 +1804,159 @@ const loadCustomerAccounts = async () => {
   };
 
   // Payment History Modal Component
+  // const PaymentHistoryModal = () => {
+  //   if (!showHistoryModal || !selectedAccount) return null;
+
+  //   const pending = pendingPayments[selectedAccount._id];
+
+  //   return (
+  //     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+  //       <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+  //         <div className="p-6 border-b border-gray-200">
+  //           <div className="flex items-center justify-between">
+  //             <h3 className="text-xl font-bold">Payment History</h3>
+  //             <button
+  //               onClick={() => setShowHistoryModal(false)}
+  //               className="text-gray-400 hover:text-gray-600"
+  //             >
+  //               <XCircle className="h-6 w-6" />
+  //             </button>
+  //           </div>
+  //           <p className="text-gray-600 mt-1">
+  //             {selectedAccount.accountNumber} - {selectedAccount.type}
+  //           </p>
+
+  //           {/* Current Balance Display */}
+  //           <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+  //             <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+  //               <p className="text-green-700 font-semibold">Current Balance</p>
+  //               <p className="text-lg font-bold text-green-600">
+  //                 ₹{selectedAccount.currentBalance?.toLocaleString() || "0"}
+  //               </p>
+  //             </div>
+  //             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+  //               <p className="text-blue-700 font-semibold">Total Paid Amount</p>
+  //               <p className="text-lg font-bold text-blue-600">
+  //                 ₹{pending?.totalPaidAmount?.toLocaleString() || "0"}
+  //               </p>
+  //             </div>
+  //           </div>
+  //         </div>
+
+  //         <div className="overflow-y-auto max-h-[60vh]">
+  //           <div className="p-6">
+  //             {paymentHistory.length === 0 ? (
+  //               <div className="text-center py-8">
+  //                 <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+  //                 <p className="text-gray-600">No payment history found</p>
+  //               </div>
+  //             ) : (
+  //               <div className="space-y-4">
+  //                 {paymentHistory.map((payment) => (
+  //                   <div
+  //                     key={payment._id}
+  //                     className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+  //                   >
+  //                     <div className="flex items-center justify-between mb-3">
+  //                       <div className="flex items-center gap-3">
+  //                         <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+  //                           <CheckCircle className="h-4 w-4" />
+  //                           {payment.status.toUpperCase()}
+  //                         </div>
+  //                         <div>
+  //                           <span className="text-sm font-semibold text-gray-900">
+  //                             {new Date(payment.date).toLocaleDateString()}
+  //                           </span>
+  //                         </div>
+  //                       </div>
+  //                       <span className="text-lg font-bold text-green-600">
+  //                         ₹{payment.amount}
+  //                       </span>
+  //                     </div>
+
+  //                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+  //                       <div>
+  //                         <p className="text-gray-600">Reference</p>
+  //                         <p className="font-mono text-gray-900 text-xs">
+  //                           {payment.referenceNumber}
+  //                         </p>
+  //                       </div>
+  //                       <div>
+  //                         <p className="text-gray-600">Payment Method</p>
+  //                         <p className="capitalize text-gray-900">
+  //                           {payment.paymentMethod}
+  //                         </p>
+  //                       </div>
+  //                       <div>
+  //                         <p className="text-gray-600">Type</p>
+  //                         <p className="text-gray-900">
+  //                           {payment.isPendingPayment
+  //                             ? "Pending Payment"
+  //                             : "Regular Payment"}
+  //                         </p>
+  //                       </div>
+  //                     </div>
+  //                   </div>
+  //                 ))}
+  //               </div>
+  //             )}
+  //           </div>
+  //         </div>
+
+  //         <div className="p-6 border-t border-gray-200 bg-gray-50">
+  //           <button
+  //             onClick={() => setShowHistoryModal(false)}
+  //             className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
+  //           >
+  //             Close
+  //           </button>
+  //         </div>
+  //       </div>
+  //     </div>
+  //   );
+  // };
+  // Payment History Modal Component
   const PaymentHistoryModal = () => {
     if (!showHistoryModal || !selectedAccount) return null;
 
     const pending = pendingPayments[selectedAccount._id];
+
+    // Helper function to get payment date
+    const getPaymentDate = (payment) => {
+      return (
+        payment.date ||
+        payment.createdAt ||
+        payment.transactionDate ||
+        payment.paymentDate
+      );
+    };
+
+    // Helper function to get payment status
+    const getPaymentStatus = (payment) => {
+      return payment.status || "completed";
+    };
+
+    // Helper function to get payment method
+    const getPaymentMethod = (payment) => {
+      return payment.paymentMethod || payment.method || "cash";
+    };
+
+    // Helper function to get reference number
+    const getReferenceNumber = (payment) => {
+      return (
+        payment.referenceNumber ||
+        payment.reference ||
+        payment.transactionId ||
+        payment._id
+      );
+    };
+
+    // Helper function to get payment type
+    const getPaymentType = (payment) => {
+      if (payment.isPendingPayment) return "Pending Payment";
+      if (payment.type === "deposit") return "Regular Payment";
+      return payment.type || "Payment";
+    };
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -1511,53 +1998,138 @@ const loadCustomerAccounts = async () => {
                 <div className="text-center py-8">
                   <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <p className="text-gray-600">No payment history found</p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Payment records will appear here after successful
+                    transactions.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {paymentHistory.map((payment) => (
+                  <div className="flex justify-between items-center mb-4">
+                    <p className="text-sm text-gray-600">
+                      Showing {paymentHistory.length} payment
+                      {paymentHistory.length > 1 ? "s" : ""}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Total: ₹
+                      {paymentHistory
+                        .reduce(
+                          (sum, payment) => sum + (payment.amount || 0),
+                          0
+                        )
+                        .toLocaleString()}
+                    </p>
+                  </div>
+
+                  {paymentHistory.map((payment, index) => (
                     <div
-                      key={payment._id}
+                      key={
+                        payment._id ||
+                        payment.transactionId ||
+                        `payment-${index}`
+                      }
                       className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                     >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            <CheckCircle className="h-4 w-4" />
-                            {payment.status.toUpperCase()}
+                          <div
+                            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                              getPaymentStatus(payment) === "completed" ||
+                              getPaymentStatus(payment) === "verified"
+                                ? "bg-green-100 text-green-800"
+                                : getPaymentStatus(payment) === "pending"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {getPaymentStatus(payment) === "completed" ||
+                            getPaymentStatus(payment) === "verified" ? (
+                              <CheckCircle className="h-4 w-4" />
+                            ) : getPaymentStatus(payment) === "pending" ? (
+                              <Clock className="h-4 w-4" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4" />
+                            )}
+                            {getPaymentStatus(payment).toUpperCase()}
                           </div>
                           <div>
                             <span className="text-sm font-semibold text-gray-900">
-                              {new Date(payment.date).toLocaleDateString()}
+                              {new Date(
+                                getPaymentDate(payment)
+                              ).toLocaleDateString()}
+                            </span>
+                            <span className="text-xs text-gray-500 ml-2">
+                              {new Date(
+                                getPaymentDate(payment)
+                              ).toLocaleTimeString()}
                             </span>
                           </div>
                         </div>
                         <span className="text-lg font-bold text-green-600">
-                          ₹{payment.amount}
+                          ₹{(payment.amount || 0).toLocaleString()}
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                           <p className="text-gray-600">Reference</p>
                           <p className="font-mono text-gray-900 text-xs">
-                            {payment.referenceNumber}
+                            {getReferenceNumber(payment)}
                           </p>
                         </div>
                         <div>
                           <p className="text-gray-600">Payment Method</p>
                           <p className="capitalize text-gray-900">
-                            {payment.paymentMethod}
+                            {getPaymentMethod(payment)}
                           </p>
                         </div>
                         <div>
                           <p className="text-gray-600">Type</p>
                           <p className="text-gray-900">
-                            {payment.isPendingPayment
-                              ? "Pending Payment"
-                              : "Regular Payment"}
+                            {getPaymentType(payment)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Status</p>
+                          <p className="capitalize text-gray-900">
+                            {getPaymentStatus(payment)}
                           </p>
                         </div>
                       </div>
+
+                      {/* Additional payment details */}
+                      {payment.coveredPeriods &&
+                        payment.coveredPeriods.length > 0 && (
+                          <div className="mt-3 p-2 bg-blue-50 rounded text-xs">
+                            <p className="text-blue-700 font-semibold">
+                              Covered Periods:
+                            </p>
+                            <div className="text-blue-600">
+                              {payment.coveredPeriods
+                                .slice(0, 3)
+                                .map((period, idx) => (
+                                  <div key={idx}>
+                                    •{" "}
+                                    {new Date(period.date).toLocaleDateString()}{" "}
+                                    - ₹{period.amount}
+                                  </div>
+                                ))}
+                              {payment.coveredPeriods.length > 3 && (
+                                <div>
+                                  ... and {payment.coveredPeriods.length - 3}{" "}
+                                  more
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                      {payment.isPartialPayment && (
+                        <div className="mt-2 text-xs text-orange-600">
+                          ⚠️ Partial Payment - Remaining: ₹
+                          {payment.remainingPendingAmount || 0}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
