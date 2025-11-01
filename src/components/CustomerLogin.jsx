@@ -61,7 +61,7 @@ const CustomerLogin = () => {
         );
 
         // Redirect to customer dashboard
-        navigate("/");
+        navigate("/pigmy");
       }
     } catch (error) {
       setError(

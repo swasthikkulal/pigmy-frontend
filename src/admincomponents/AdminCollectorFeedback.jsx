@@ -12,13 +12,14 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
+  Users,
 } from "lucide-react";
 import axios from "axios";
 
-const AdminFeedback = () => {
+const AdminCollectorFeedback = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [feedbackData, setFeedbackData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -27,96 +28,44 @@ const AdminFeedback = () => {
   const [responseText, setResponseText] = useState("");
   const [actionLoading, setActionLoading] = useState(null);
 
-  // Debug authentication on component mount
+  // Fetch collector feedback data
   useEffect(() => {
-    const token = localStorage.getItem("adminToken");
-    const role = localStorage.getItem("adminRole");
-
-    console.log("🔐 Admin Authentication Debug:");
-    console.log("   Token exists:", !!token);
-    console.log("   Token length:", token ? token.length : 0);
-    console.log(
-      "   Token sample:",
-      token ? `${token.substring(0, 20)}...` : "None"
-    );
-    console.log("   Admin role:", role);
-    console.log("   Full token:", token); // Remove this in production
+    fetchCollectorFeedback();
   }, []);
 
-  // Test authentication first
-  useEffect(() => {
-    testAuthentication();
-  }, []);
-
-  const testAuthentication = async () => {
-    try {
-      const token = localStorage.getItem("adminToken");
-      console.log("🧪 Testing authentication...");
-
-      const response = await axios.get(
-        "http://localhost:5000/api/feedback/test-auth",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      console.log("✅ Authentication test passed:", response.data);
-      // If auth test passes, fetch feedback data
-      fetchFeedbackData();
-    } catch (authError) {
-      console.error("❌ Authentication test failed:", authError);
-      setError("Authentication failed. Please log in again.");
-      setLoading(false);
-    }
-  };
-
-  const fetchFeedbackData = async () => {
+  const fetchCollectorFeedback = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem("adminToken");
 
-      console.log("📡 Fetching feedback data...");
-      console.log("   Endpoint: /api/feedback/admin/list");
-      console.log("   Token present:", !!token);
+      console.log("📡 Fetching collector feedback data...");
 
       const response = await axios.get(
-        "http://localhost:5000/api/feedback/admin/list",
+        "http://localhost:5000/api/feedback/collector/admin/all",
         {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-          timeout: 10000, // 10 second timeout
+          timeout: 10000,
         }
       );
 
-      console.log("✅ Feedback API Response:", response.data);
+      console.log("✅ Collector Feedback API Response:", response.data);
 
       if (response.data.success) {
-        setFeedbackData(response.data.data);
-        console.log(`📊 Loaded ${response.data.data.length} feedback entries`);
+        setFeedbackData(response.data.data || []);
+        console.log(`📊 Loaded ${response.data.data?.length || 0} collector feedback entries`);
       } else {
-        setError(response.data.message || "Failed to fetch feedback data");
+        setError(response.data.message || "Failed to fetch collector feedback");
       }
     } catch (error) {
-      console.error("❌ Error fetching feedback:", error);
+      console.error("❌ Error fetching collector feedback:", error);
 
-      // Detailed error analysis
-      if (error.code === "ECONNABORTED") {
-        setError("Request timeout. Please try again.");
-      } else if (error.response) {
-        // Server responded with error status
-        console.error("   Status:", error.response.status);
-        console.error("   Data:", error.response.data);
-
+      if (error.response) {
         if (error.response.status === 401) {
           setError("Authentication expired. Please log in again.");
-          // Redirect to login or show login modal
         } else if (error.response.status === 403) {
-          setError("You don't have permission to access feedback.");
-        } else if (error.response.status === 404) {
-          setError("Feedback endpoint not found. Please check the server.");
+          setError("You don't have permission to access collector feedback.");
         } else {
           setError(
             error.response.data?.message ||
@@ -124,13 +73,8 @@ const AdminFeedback = () => {
           );
         }
       } else if (error.request) {
-        // No response received
-        console.error("   No response received");
-        setError(
-          "Cannot connect to server. Please check your connection and try again."
-        );
+        setError("Cannot connect to server. Please check your connection.");
       } else {
-        // Other errors
         setError("Failed to make request: " + error.message);
       }
     } finally {
@@ -138,16 +82,16 @@ const AdminFeedback = () => {
     }
   };
 
-  // Update the status update function to use the correct endpoint
+  // Update feedback status
   const updateFeedbackStatus = async (feedbackId, newStatus) => {
     try {
       setActionLoading(feedbackId);
       const token = localStorage.getItem("adminToken");
 
-      console.log(`Updating feedback ${feedbackId} to status: ${newStatus}`);
+      console.log(`Updating collector feedback ${feedbackId} to status: ${newStatus}`);
 
-      const response = await axios.patch(
-        `http://localhost:5000/api/feedback/admin/${feedbackId}/status`,
+      const response = await axios.put(
+        `http://localhost:5000/api/feedback/collector/admin/${feedbackId}/status`,
         {
           status: newStatus,
         },
@@ -162,7 +106,7 @@ const AdminFeedback = () => {
 
       if (response.data.success) {
         alert(`Feedback marked as ${getStatusDisplay(newStatus)}`);
-        fetchFeedbackData();
+        fetchCollectorFeedback();
       } else {
         alert("Failed to update status");
       }
@@ -174,10 +118,10 @@ const AdminFeedback = () => {
     }
   };
 
-  // Update the response function to use the correct endpoint
+  // Add admin notes
   const handleSendResponse = async () => {
     if (!responseText.trim()) {
-      alert("Please enter a response message");
+      alert("Please enter admin notes");
       return;
     }
 
@@ -185,13 +129,12 @@ const AdminFeedback = () => {
       setActionLoading("sending_response");
       const token = localStorage.getItem("adminToken");
 
-      console.log("Sending response to feedback:", selectedFeedback._id);
+      console.log("Adding admin notes to feedback:", selectedFeedback._id);
 
-      const response = await axios.patch(
-        `http://localhost:5000/api/feedback/admin/${selectedFeedback._id}/status`,
+      const response = await axios.put(
+        `http://localhost:5000/api/feedback/collector/admin/${selectedFeedback._id}/notes`,
         {
-          response: responseText,
-          status: "resolved",
+          admin_notes: responseText,
         },
         {
           headers: {
@@ -200,58 +143,52 @@ const AdminFeedback = () => {
         }
       );
 
-      console.log("Response sent successfully:", response.data);
+      console.log("Admin notes added successfully:", response.data);
 
       if (response.data.success) {
-        alert("Response sent successfully!");
+        alert("Admin notes added successfully!");
         setShowResponseModal(false);
         setResponseText("");
         setSelectedFeedback(null);
-        fetchFeedbackData();
+        fetchCollectorFeedback();
       } else {
-        alert(response.data.message || "Failed to send response");
+        alert(response.data.message || "Failed to add admin notes");
       }
     } catch (error) {
-      console.error("Error sending response:", error);
-
-      let errorMessage = "Failed to send response";
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
-
-      alert(`Error: ${errorMessage}`);
+      console.error("Error adding admin notes:", error);
+      alert(error.response?.data?.message || "Failed to add admin notes");
     } finally {
       setActionLoading(null);
     }
   };
 
-  // ... rest of your component code remains the same
+  // Filter feedback
   const filteredFeedback = feedbackData.filter((feedback) => {
     const matchesSearch =
-      feedback.customerId?.name
+      feedback.submitted_by?.name
         ?.toLowerCase()
         .includes(searchTerm.toLowerCase()) ||
-      feedback.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      feedback.type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      feedback.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       feedback.message?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus =
       statusFilter === "all" || feedback.status === statusFilter;
 
-    const matchesType = typeFilter === "all" || feedback.type === typeFilter;
+    const matchesCategory = categoryFilter === "all" || feedback.category === categoryFilter;
 
-    return matchesSearch && matchesStatus && matchesType;
+    return matchesSearch && matchesStatus && matchesCategory;
   });
 
+  // Status and styling helpers
   const getStatusColor = (status) => {
     switch (status) {
       case "resolved":
         return "bg-green-100 text-green-800 border-green-200";
-      case "in_progress":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "open":
+      case "reviewed":
         return "bg-blue-100 text-blue-800 border-blue-200";
-      case "closed":
+      case "action_taken":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      case "pending":
         return "bg-gray-100 text-gray-800 border-gray-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
@@ -262,10 +199,12 @@ const AdminFeedback = () => {
     switch (status) {
       case "resolved":
         return <CheckCircle className="h-4 w-4" />;
-      case "in_progress":
+      case "reviewed":
         return <Clock className="h-4 w-4" />;
-      case "open":
+      case "action_taken":
         return <AlertCircle className="h-4 w-4" />;
+      case "pending":
+        return <MessageSquare className="h-4 w-4" />;
       default:
         return <MessageSquare className="h-4 w-4" />;
     }
@@ -273,14 +212,14 @@ const AdminFeedback = () => {
 
   const getStatusDisplay = (status) => {
     switch (status) {
-      case "open":
-        return "New";
-      case "in_progress":
-        return "In Progress";
+      case "pending":
+        return "Pending";
+      case "reviewed":
+        return "Reviewed";
+      case "action_taken":
+        return "Action Taken";
       case "resolved":
         return "Resolved";
-      case "closed":
-        return "Closed";
       default:
         return status;
     }
@@ -297,16 +236,18 @@ const AdminFeedback = () => {
     ));
   };
 
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case "critical":
+  const getCategoryColor = (category) => {
+    switch (category) {
+      case "complaint":
         return "bg-red-100 text-red-800 border-red-200";
-      case "high":
+      case "suggestion":
+        return "bg-blue-100 text-blue-800 border-blue-200";
+      case "system":
+        return "bg-purple-100 text-purple-800 border-purple-200";
+      case "colleague":
         return "bg-orange-100 text-orange-800 border-orange-200";
-      case "medium":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "low":
-        return "bg-green-100 text-green-800 border-green-200";
+      case "general":
+        return "bg-gray-100 text-gray-800 border-gray-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
     }
@@ -314,7 +255,7 @@ const AdminFeedback = () => {
 
   const openResponseModal = (feedback) => {
     setSelectedFeedback(feedback);
-    setResponseText(feedback.response?.message || "");
+    setResponseText(feedback.admin_notes || "");
     setShowResponseModal(true);
   };
 
@@ -327,19 +268,18 @@ const AdminFeedback = () => {
   // Stats for dashboard
   const stats = {
     total: feedbackData.length,
-    open: feedbackData.filter((f) => f.status === "open").length,
-    inProgress: feedbackData.filter((f) => f.status === "in_progress").length,
+    pending: feedbackData.filter((f) => f.status === "pending").length,
+    reviewed: feedbackData.filter((f) => f.status === "reviewed").length,
+    action_taken: feedbackData.filter((f) => f.status === "action_taken").length,
     resolved: feedbackData.filter((f) => f.status === "resolved").length,
-    closed: feedbackData.filter((f) => f.status === "closed").length,
   };
 
-  // ... rest of your JSX remains the same
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading feedback...</p>
+          <p className="text-gray-600">Loading collector feedback...</p>
         </div>
       </div>
     );
@@ -349,25 +289,17 @@ const AdminFeedback = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <MessageSquare className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
-            Error Loading Feedback
+            Error Loading Collector Feedback
           </h3>
           <p className="text-gray-600 mb-4">{error}</p>
-          <div className="space-x-2">
-            <button
-              onClick={testAuthentication}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
-            >
-              Test Authentication
-            </button>
-            <button
-              onClick={fetchFeedbackData}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
-            >
-              Retry
-            </button>
-          </div>
+          <button
+            onClick={fetchCollectorFeedback}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -379,14 +311,14 @@ const AdminFeedback = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Customer Feedback
+            Collector Feedback
           </h1>
           <p className="text-gray-600 mt-2">
-            Manage and respond to customer feedback
+            Manage and respond to feedback from collectors
           </p>
         </div>
         <button
-          onClick={fetchFeedbackData}
+          onClick={fetchCollectorFeedback}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
         >
           Refresh
@@ -399,25 +331,25 @@ const AdminFeedback = () => {
           <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
           <div className="text-sm text-gray-600">Total</div>
         </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="text-2xl font-bold text-gray-600">{stats.pending}</div>
+          <div className="text-sm text-gray-600">Pending</div>
+        </div>
         <div className="bg-white rounded-lg border border-blue-200 p-4">
-          <div className="text-2xl font-bold text-blue-600">{stats.open}</div>
-          <div className="text-sm text-blue-600">New</div>
+          <div className="text-2xl font-bold text-blue-600">{stats.reviewed}</div>
+          <div className="text-sm text-blue-600">Reviewed</div>
         </div>
         <div className="bg-white rounded-lg border border-yellow-200 p-4">
           <div className="text-2xl font-bold text-yellow-600">
-            {stats.inProgress}
+            {stats.action_taken}
           </div>
-          <div className="text-sm text-yellow-600">In Progress</div>
+          <div className="text-sm text-yellow-600">Action Taken</div>
         </div>
         <div className="bg-white rounded-lg border border-green-200 p-4">
           <div className="text-2xl font-bold text-green-600">
             {stats.resolved}
           </div>
           <div className="text-sm text-green-600">Resolved</div>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="text-2xl font-bold text-gray-600">{stats.closed}</div>
-          <div className="text-sm text-gray-600">Closed</div>
         </div>
       </div>
 
@@ -428,7 +360,7 @@ const AdminFeedback = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by customer name, subject, or message..."
+              placeholder="Search by collector name, category, or message..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -440,21 +372,22 @@ const AdminFeedback = () => {
             className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="all">All Status</option>
-            <option value="open">New</option>
-            <option value="in_progress">In Progress</option>
+            <option value="pending">Pending</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="action_taken">Action Taken</option>
             <option value="resolved">Resolved</option>
-            <option value="closed">Closed</option>
           </select>
           <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
-            <option value="all">All Types</option>
-            <option value="complaint">Complaint</option>
-            <option value="suggestion">Suggestion</option>
-            <option value="inquiry">Inquiry</option>
+            <option value="all">All Categories</option>
             <option value="general">General</option>
+            <option value="colleague">Colleague</option>
+            <option value="system">System</option>
+            <option value="suggestion">Suggestion</option>
+            <option value="complaint">Complaint</option>
           </select>
         </div>
       </div>
@@ -468,18 +401,18 @@ const AdminFeedback = () => {
           >
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                  <User className="h-5 w-5 text-purple-600" />
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <Users className="h-5 w-5 text-blue-600" />
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">
-                    {feedback.customerId?.name || "Unknown Customer"}
+                    {feedback.submitted_by?.name || "Unknown Collector"}
                   </h3>
                   <p className="text-sm text-gray-500">
-                    {feedback.customerId?.email || feedback.email || "No email"}
+                    {feedback.submitted_by?.email || "No email"}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {feedback.customerId?.phone || "No phone"}
+                    {feedback.submitted_by?.phone || "No phone"}
                   </p>
                 </div>
               </div>
@@ -502,11 +435,11 @@ const AdminFeedback = () => {
                     </span>
                   </span>
                   <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getPriorityColor(
-                      feedback.priority
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getCategoryColor(
+                      feedback.category
                     )}`}
                   >
-                    {feedback.priority}
+                    {feedback.category}
                   </span>
                 </div>
               </div>
@@ -514,58 +447,75 @@ const AdminFeedback = () => {
 
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-gray-900">
-                  {feedback.subject}
+                <h4 className="font-medium text-gray-900 capitalize">
+                  {feedback.category} Feedback
                 </h4>
                 <span className="text-sm text-gray-500 flex items-center">
                   <Calendar className="h-4 w-4 mr-1" />
-                  {new Date(feedback.createdAt).toLocaleDateString()}
+                  {new Date(feedback.created_at).toLocaleDateString()}
                 </span>
               </div>
               <p className="text-gray-600 mb-2">{feedback.message}</p>
-              <div className="flex flex-wrap gap-2">
-                <span className="inline-block px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs capitalize">
-                  {feedback.type}
-                </span>
-              </div>
+              
+              {/* About Collector (if specified) */}
+              {feedback.about_collector && (
+                <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">About Collector:</span> {feedback.about_collector.name}
+                  </p>
+                </div>
+              )}
             </div>
 
-            {feedback.response?.message && (
-              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            {/* Admin Notes */}
+            {feedback.admin_notes && (
+              <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
                 <div className="flex items-center justify-between mb-2">
-                  <h5 className="font-medium text-blue-900 flex items-center">
+                  <h5 className="font-medium text-green-900 flex items-center">
                     <CheckCircle className="h-4 w-4 mr-2" />
-                    Admin Response
+                    Admin Notes
                   </h5>
-                  <span className="text-xs text-blue-600">
-                    {new Date(feedback.response.respondedAt).toLocaleString()}
+                  <span className="text-xs text-green-600">
+                    {new Date(feedback.updated_at).toLocaleString()}
                   </span>
                 </div>
-                <p className="text-blue-800">{feedback.response.message}</p>
+                <p className="text-green-800">{feedback.admin_notes}</p>
               </div>
             )}
 
             <div className="flex justify-between items-center pt-4 border-t border-gray-200">
               <div className="flex space-x-3">
-                {feedback.status === "open" && (
+                {feedback.status === "pending" && (
                   <button
                     onClick={() =>
-                      updateFeedbackStatus(feedback._id, "in_progress")
+                      updateFeedbackStatus(feedback._id, "reviewed")
                     }
                     disabled={actionLoading === feedback._id}
-                    className="flex items-center text-yellow-600 hover:text-yellow-800 text-sm font-medium disabled:opacity-50"
+                    className="flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium disabled:opacity-50"
                   >
                     <Clock className="h-4 w-4 mr-1" />
                     {actionLoading === feedback._id
                       ? "Updating..."
-                      : "Start Progress"}
+                      : "Mark Reviewed"}
                   </button>
                 )}
-                {feedback.status === "in_progress" && (
+                {feedback.status === "reviewed" && (
                   <button
                     onClick={() =>
-                      updateFeedbackStatus(feedback._id, "resolved")
+                      updateFeedbackStatus(feedback._id, "action_taken")
                     }
+                    disabled={actionLoading === feedback._id}
+                    className="flex items-center text-yellow-600 hover:text-yellow-800 text-sm font-medium disabled:opacity-50"
+                  >
+                    <AlertCircle className="h-4 w-4 mr-1" />
+                    {actionLoading === feedback._id
+                      ? "Updating..."
+                      : "Mark Action Taken"}
+                  </button>
+                )}
+                {feedback.status === "action_taken" && (
+                  <button
+                    onClick={() => updateFeedbackStatus(feedback._id, "resolved")}
                     disabled={actionLoading === feedback._id}
                     className="flex items-center text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50"
                   >
@@ -573,17 +523,6 @@ const AdminFeedback = () => {
                     {actionLoading === feedback._id
                       ? "Updating..."
                       : "Mark Resolved"}
-                  </button>
-                )}
-                {feedback.status === "resolved" && (
-                  <button
-                    onClick={() => updateFeedbackStatus(feedback._id, "closed")}
-                    disabled={actionLoading === feedback._id}
-                    className="flex items-center text-gray-600 hover:text-gray-800 text-sm font-medium disabled:opacity-50"
-                  >
-                    {actionLoading === feedback._id
-                      ? "Updating..."
-                      : "Close Ticket"}
                   </button>
                 )}
               </div>
@@ -594,9 +533,9 @@ const AdminFeedback = () => {
                   className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
                   <Edit className="h-4 w-4 mr-1" />
-                  {feedback.response?.message
-                    ? "Edit Response"
-                    : "Send Response"}
+                  {feedback.admin_notes
+                    ? "Edit Notes"
+                    : "Add Notes"}
                 </button>
               </div>
             </div>
@@ -606,28 +545,28 @@ const AdminFeedback = () => {
 
       {filteredFeedback.length === 0 && !loading && (
         <div className="text-center py-12 bg-white rounded-lg shadow-sm border border-gray-200">
-          <MessageSquare className="mx-auto h-12 w-12 text-gray-400" />
+          <Users className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">
-            No feedback found
+            No collector feedback found
           </h3>
           <p className="mt-1 text-sm text-gray-500">
-            {searchTerm || statusFilter !== "all" || typeFilter !== "all"
-              ? "No feedback matches your search criteria."
-              : "No feedback has been submitted yet."}
+            {searchTerm || statusFilter !== "all" || categoryFilter !== "all"
+              ? "No collector feedback matches your search criteria."
+              : "No collector feedback has been submitted yet."}
           </p>
         </div>
       )}
 
-      {/* Response Modal */}
+      {/* Admin Notes Modal */}
       {showResponseModal && selectedFeedback && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold text-gray-900">
-                  {selectedFeedback.response?.message
-                    ? "Edit Response"
-                    : "Send Response"}
+                  {selectedFeedback.admin_notes
+                    ? "Edit Admin Notes"
+                    : "Add Admin Notes"}
                 </h2>
                 <button
                   onClick={closeResponseModal}
@@ -637,11 +576,11 @@ const AdminFeedback = () => {
                 </button>
               </div>
 
-              {/* Customer Feedback Preview */}
+              {/* Collector Feedback Preview */}
               <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold text-gray-900">
-                    {selectedFeedback.customerId?.name || "Unknown Customer"}
+                    {selectedFeedback.submitted_by?.name || "Unknown Collector"}
                   </h3>
                   <div className="flex items-center space-x-2">
                     {getRatingStars(selectedFeedback.rating)}
@@ -650,8 +589,8 @@ const AdminFeedback = () => {
                     </span>
                   </div>
                 </div>
-                <h4 className="font-medium text-gray-800 mb-2">
-                  {selectedFeedback.subject}
+                <h4 className="font-medium text-gray-800 mb-2 capitalize">
+                  {selectedFeedback.category} Feedback
                 </h4>
                 <p className="text-gray-600 text-sm">
                   {selectedFeedback.message}
@@ -661,18 +600,17 @@ const AdminFeedback = () => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Your Response
+                    Admin Notes
                   </label>
                   <textarea
                     value={responseText}
                     onChange={(e) => setResponseText(e.target.value)}
-                    placeholder="Type your response to the customer. This will automatically mark the feedback as resolved."
+                    placeholder="Add your notes or response for this collector feedback..."
                     rows="6"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    This response will be sent to the customer and the feedback
-                    will be marked as resolved.
+                    These notes will be visible to administrators and can be used to track actions taken.
                   </p>
                 </div>
 
@@ -694,8 +632,8 @@ const AdminFeedback = () => {
                   >
                     <Send className="h-4 w-4 mr-2" />
                     {actionLoading === "sending_response"
-                      ? "Sending..."
-                      : "Send Response"}
+                      ? "Saving..."
+                      : "Save Notes"}
                   </button>
                 </div>
               </div>
@@ -707,4 +645,4 @@ const AdminFeedback = () => {
   );
 };
 
-export default AdminFeedback;
+export default AdminCollectorFeedback;

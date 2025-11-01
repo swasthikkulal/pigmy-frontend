@@ -13,6 +13,12 @@ import {
   XCircle,
   Target,
   Info,
+  Download,
+  User,
+  MapPin,
+  Phone,
+  FileText,
+  History,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -20,7 +26,11 @@ import {
   getCustomerProfile,
   getPaymentHistory,
   processPayment,
+  withdrawAmount,
+  getWithdrawalHistory,
 } from "../services/api";
+import Footer from "./Footer";
+import Navbar from "./Navbar";
 
 const AccountsPage = () => {
   const navigate = useNavigate();
@@ -42,6 +52,14 @@ const AccountsPage = () => {
   const [paidPeriodsMap, setPaidPeriodsMap] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [withdrawalAmount, setWithdrawalAmount] = useState("");
+  const [processingWithdrawal, setProcessingWithdrawal] = useState(false);
+  const [withdrawalReason, setWithdrawalReason] = useState("");
+  const [withdrawalHistory, setWithdrawalHistory] = useState([]);
+  const [showWithdrawalHistoryModal, setShowWithdrawalHistoryModal] =
+    useState(false);
+  const [loadingWithdrawalHistory, setLoadingWithdrawalHistory] =
+    useState(false);
 
   useEffect(() => {
     loadCustomerAccounts();
@@ -113,24 +131,43 @@ const AccountsPage = () => {
   };
 
   const calculateCurrentBalance = (account) => {
-    if (!account.transactions || account.transactions.length === 0) {
-      return account.totalBalance || 0;
+    // First try to use the account's totalBalance (updated by backend)
+    if (account.totalBalance !== undefined && account.totalBalance !== null) {
+      return account.totalBalance;
     }
 
-    const totalAmount = account.transactions.reduce((sum, transaction) => {
-      if (
-        transaction.status === "completed" ||
-        transaction.status === "verified"
-      ) {
-        return sum + (transaction.amount || 0);
-      }
-      return sum;
-    }, 0);
+    // Fallback to transaction calculation if totalBalance is not available
+    if (!account.transactions || account.transactions.length === 0) {
+      return 0;
+    }
 
-    return totalAmount;
+    let balance = 0;
+
+    account.transactions.forEach((transaction) => {
+      if (transaction.type === "deposit") {
+        // Add deposits only if they are completed/verified
+        if (
+          transaction.status === "completed" ||
+          transaction.status === "verified"
+        ) {
+          balance += transaction.amount || 0;
+        }
+      } else if (transaction.type === "withdrawal") {
+        // Subtract withdrawals only if they are completed/approved
+        // Pending withdrawals should NOT affect the current balance
+        if (
+          transaction.status === "completed" ||
+          transaction.status === "approved" ||
+          transaction.status === "verified"
+        ) {
+          balance -= transaction.amount || 0;
+        }
+      }
+    });
+
+    return Math.max(0, balance); // Ensure balance doesn't go negative
   };
 
-  // Calculate maturity amount with interest
   const calculateMaturityAmount = (account) => {
     const dailyAmount = account.dailyAmount || 0;
     const duration = account.duration || account.planId?.duration || 0;
@@ -149,7 +186,95 @@ const AccountsPage = () => {
     };
   };
 
-  // FIXED: Enhanced pending payment calculation for weekly plans
+  // FIXED: Enhanced function to check if today's payment requirement is fulfilled
+  const checkIfTodayPaid = (account, planType, transactions, missedPeriods) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // If there are missed periods that include today, then today is NOT paid
+    const hasMissedPeriodForToday = missedPeriods.some((period) => {
+      const periodDate = new Date(period.date);
+      periodDate.setHours(0, 0, 0, 0);
+
+      switch (planType) {
+        case "daily":
+          return periodDate.getTime() === today.getTime();
+        case "weekly":
+          const weekStart = new Date(period.weekStart);
+          const weekEnd = new Date(period.weekEnd);
+          return today >= weekStart && today <= weekEnd;
+        case "monthly":
+          const monthStart = new Date(period.monthStart);
+          const monthEnd = new Date(period.monthEnd);
+          return today >= monthStart && today <= monthEnd;
+        default:
+          return false;
+      }
+    });
+
+    if (hasMissedPeriodForToday) {
+      return false; // Today is in missed periods, so NOT paid
+    }
+
+    // Check if there's a transaction for the current period
+    switch (planType) {
+      case "daily":
+        // Check if there's a transaction for today
+        return transactions.some((transaction) => {
+          if (!transaction.date) return false;
+          const transactionDate = new Date(transaction.date);
+          transactionDate.setHours(0, 0, 0, 0);
+          return (
+            transactionDate.getTime() === today.getTime() &&
+            (transaction.status === "completed" ||
+              transaction.status === "verified")
+          );
+        });
+
+      case "weekly":
+        // Check if there's a transaction in the current week
+        const weekStart = new Date(today);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week (Sunday)
+        weekStart.setHours(0, 0, 0, 0);
+
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6); // End of week (Saturday)
+        weekEnd.setHours(23, 59, 59, 999);
+
+        return transactions.some((transaction) => {
+          if (!transaction.date) return false;
+          const transactionDate = new Date(transaction.date);
+          return (
+            transactionDate >= weekStart &&
+            transactionDate <= weekEnd &&
+            (transaction.status === "completed" ||
+              transaction.status === "verified")
+          );
+        });
+
+      case "monthly":
+        // Check if there's a transaction in the current month
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        monthEnd.setHours(23, 59, 59, 999);
+
+        return transactions.some((transaction) => {
+          if (!transaction.date) return false;
+          const transactionDate = new Date(transaction.date);
+          return (
+            transactionDate >= monthStart &&
+            transactionDate <= monthEnd &&
+            (transaction.status === "completed" ||
+              transaction.status === "verified")
+          );
+        });
+
+      default:
+        return false;
+    }
+  };
+
+  // FIXED: Enhanced pending payment calculation with proper full amount calculation
   const calculatePendingPayments = (accountsData) => {
     const pending = {};
     const today = new Date();
@@ -176,22 +301,13 @@ const AccountsPage = () => {
       const principalAmount = maturityCalculation.principalAmount;
       const interestAmount = maturityCalculation.interestAmount;
 
-      let pendingAmount = 0;
-      let pendingCount = 0;
-      let totalPaidAmount = 0;
+      // ✅ FIXED: Use account.totalBalance for totalPaidAmount instead of calculating from transactions
+      const totalPaidAmount = account.totalBalance || 0;
+
       let remainingMaturityAmount = maturityAmount;
       const missedPeriods = [];
 
-      // Calculate total paid amount (including completed cash payments)
-      transactions.forEach((transaction) => {
-        if (
-          transaction.status === "completed" ||
-          transaction.status === "verified"
-        ) {
-          totalPaidAmount += transaction.amount || 0;
-        }
-      });
-
+      // ✅ FIXED: Calculate remaining maturity amount correctly
       remainingMaturityAmount = Math.max(0, maturityAmount - totalPaidAmount);
 
       // If maturity reached, no pending payments
@@ -209,16 +325,23 @@ const AccountsPage = () => {
           missedPeriods: [],
           pendingDays: 0,
           maturityCalculation,
+          hasPaidToday: true, // No need to pay if maturity reached
+          fullPendingAmount: 0, // ✅ ADDED: Full pending amount
         };
         return;
       }
 
-      // FIXED: Calculate pending periods based on plan type
+      let pendingAmount = 0;
+      let pendingCount = 0;
+      let fullPendingAmount = 0; // ✅ ADDED: This will track the full pending amount
+
+      // FIXED: Calculate pending periods based on plan type - ONLY UP TO TODAY
       if (planType === "daily") {
         const checkDate = new Date(openingDate);
         let dayCount = 0;
         const processedDates = new Set();
 
+        // Only check dates up to today (not future dates)
         while (checkDate <= today && dayCount < duration) {
           const dateKey = checkDate.toISOString().split("T")[0];
           const periodId = `day-${dateKey}`;
@@ -246,29 +369,32 @@ const AccountsPage = () => {
 
           const isPeriodPaid = paidPeriodIds.has(periodId);
 
+          // Track all pending periods for full amount calculation
           if (!hasTransactionForDate && !isPeriodPaid) {
-            const potentialPendingAmount = pendingAmount + dailyAmount;
-            if (potentialPendingAmount <= remainingMaturityAmount) {
-              pendingAmount += dailyAmount;
-              pendingCount += 1;
-              missedPeriods.push({
-                date: new Date(checkDate),
-                amount: dailyAmount,
-                type: "day",
-                periodId: periodId,
-              });
-            }
+            fullPendingAmount += dailyAmount;
+            missedPeriods.push({
+              date: new Date(checkDate),
+              amount: dailyAmount,
+              type: "day",
+              periodId: periodId,
+            });
           }
 
           checkDate.setDate(checkDate.getDate() + 1);
           dayCount++;
         }
+
+        // For daily plans, pending amount equals full pending amount
+        pendingAmount = fullPendingAmount;
+        pendingCount = missedPeriods.length;
+
       } else if (planType === "weekly") {
-        // FIXED: Weekly plan calculation
+        // FIXED: Weekly plan calculation - only up to current week
         const checkDate = new Date(openingDate);
         let weekCount = 0;
         const processedWeeks = new Set();
 
+        // Only check weeks up to current week (not future weeks)
         while (checkDate <= today && weekCount < duration) {
           const weekStart = new Date(checkDate);
           const weekEnd = new Date(checkDate);
@@ -299,31 +425,34 @@ const AccountsPage = () => {
 
           const isPeriodPaid = paidPeriodIds.has(periodId);
 
+          // Track all pending periods for full amount calculation
           if (!hasTransactionForWeek && !isPeriodPaid) {
-            const potentialPendingAmount = pendingAmount + dailyAmount;
-            if (potentialPendingAmount <= remainingMaturityAmount) {
-              pendingAmount += dailyAmount;
-              pendingCount += 1;
-              missedPeriods.push({
-                date: new Date(weekStart),
-                amount: dailyAmount,
-                type: "week",
-                periodId: periodId,
-                weekStart: new Date(weekStart),
-                weekEnd: new Date(weekEnd),
-              });
-            }
+            fullPendingAmount += dailyAmount;
+            missedPeriods.push({
+              date: new Date(weekStart),
+              amount: dailyAmount,
+              type: "week",
+              periodId: periodId,
+              weekStart: new Date(weekStart),
+              weekEnd: new Date(weekEnd),
+            });
           }
 
           checkDate.setDate(checkDate.getDate() + 7);
           weekCount++;
         }
+
+        // For weekly plans, pending amount equals full pending amount
+        pendingAmount = fullPendingAmount;
+        pendingCount = missedPeriods.length;
+
       } else if (planType === "monthly") {
-        // Monthly plan calculation
+        // Monthly plan calculation - only up to current month
         const checkDate = new Date(openingDate);
         let monthCount = 0;
         const processedMonths = new Set();
 
+        // Only check months up to current month (not future months)
         while (checkDate <= today && monthCount < duration) {
           const monthStart = new Date(
             checkDate.getFullYear(),
@@ -364,32 +493,41 @@ const AccountsPage = () => {
 
           const isPeriodPaid = paidPeriodIds.has(periodId);
 
+          // Track all pending periods for full amount calculation
           if (!hasTransactionForMonth && !isPeriodPaid) {
-            const potentialPendingAmount = pendingAmount + dailyAmount;
-            if (potentialPendingAmount <= remainingMaturityAmount) {
-              pendingAmount += dailyAmount;
-              pendingCount += 1;
-              missedPeriods.push({
-                date: new Date(monthStart),
-                amount: dailyAmount,
-                type: "month",
-                periodId: periodId,
-                monthStart: new Date(monthStart),
-                monthEnd: new Date(monthEnd),
-              });
-            }
+            fullPendingAmount += dailyAmount;
+            missedPeriods.push({
+              date: new Date(monthStart),
+              amount: dailyAmount,
+              type: "month",
+              periodId: periodId,
+              monthStart: new Date(monthStart),
+              monthEnd: new Date(monthEnd),
+            });
           }
 
           checkDate.setMonth(checkDate.getMonth() + 1);
           monthCount++;
         }
+
+        // For monthly plans, pending amount equals full pending amount
+        pendingAmount = fullPendingAmount;
+        pendingCount = missedPeriods.length;
       }
 
-      // FIXED: Calculate pending days based on plan type
+      // ✅ FIXED: Calculate pending days based on remaining maturity amount
       const pendingDays = calculatePendingDays(
         account,
         remainingMaturityAmount,
         planType
+      );
+
+      // FIXED: Check if today's payment requirement is fulfilled (no pending for today)
+      const hasPaidToday = checkIfTodayPaid(
+        account,
+        planType,
+        transactions,
+        missedPeriods
       );
 
       pending[account._id] = {
@@ -399,14 +537,30 @@ const AccountsPage = () => {
         maturityAmount,
         principalAmount,
         interestAmount,
-        totalPaidAmount,
-        remainingMaturityAmount,
+        totalPaidAmount, // ✅ Now uses account.totalBalance
+        remainingMaturityAmount, // ✅ Now correctly calculated
         isMaturityReached: totalPaidAmount >= maturityAmount,
         missedPeriods,
         pendingDays,
         maturityCalculation,
-        planType: planType, // Add plan type for easier access
+        planType: planType,
+        hasPaidToday: hasPaidToday, // ✅ FIXED: Now correctly indicates if today is paid
+        fullPendingAmount: fullPendingAmount, // ✅ ADDED: Full pending amount
       };
+
+      // Add this at the end of the forEach loop, before setting pending
+      console.log(`📊 Account ${account.accountNumber}:`, {
+        totalBalance: account.totalBalance,
+        totalPaidAmount: totalPaidAmount,
+        maturityAmount: maturityAmount,
+        remainingMaturityAmount: remainingMaturityAmount,
+        pendingAmount: pendingAmount,
+        fullPendingAmount: fullPendingAmount,
+        pendingCount: pendingCount,
+        hasPaidToday: hasPaidToday,
+        missedPeriodsCount: missedPeriods.length,
+        progress: ((totalPaidAmount / maturityAmount) * 100).toFixed(1) + "%",
+      });
     });
 
     setPendingPayments(pending);
@@ -433,26 +587,40 @@ const AccountsPage = () => {
     }
   };
 
+  // Helper functions
   const getPendingTimeDisplay = (account, pending) => {
     if (!pending) return "";
     const planType = pending.planType || getPlanTypeFromAccount(account);
     const pendingDays = pending.pendingDays || 0;
+    const remainingAmount = pending.remainingMaturityAmount || 0;
+    const dailyAmount = account.dailyAmount || 1;
 
     switch (planType) {
       case "daily":
-        return `${pendingDays} day${pendingDays > 1 ? "s" : ""}`;
+        return `${pendingDays} day${
+          pendingDays > 1 ? "s" : ""
+        } (₹${remainingAmount} remaining)`;
       case "weekly":
         const weeks = Math.ceil(pendingDays / 7);
-        return `${weeks} week${weeks > 1 ? "s" : ""}`;
+        const weeklyAmount = dailyAmount;
+        const remainingWeeks = Math.ceil(remainingAmount / weeklyAmount);
+        return `${remainingWeeks} week${
+          remainingWeeks > 1 ? "s" : ""
+        } (₹${remainingAmount} remaining)`;
       case "monthly":
         const months = Math.ceil(pendingDays / 30);
-        return `${months} month${months > 1 ? "s" : ""}`;
+        const monthlyAmount = dailyAmount;
+        const remainingMonths = Math.ceil(remainingAmount / monthlyAmount);
+        return `${remainingMonths} month${
+          remainingMonths > 1 ? "s" : ""
+        } (₹${remainingAmount} remaining)`;
       default:
-        return `${pendingDays} day${pendingDays > 1 ? "s" : ""}`;
+        return `${pendingDays} day${
+          pendingDays > 1 ? "s" : ""
+        } (₹${remainingAmount} remaining)`;
     }
   };
 
-  // Helper functions
   const getPlanTypeFromAccount = (account) => {
     if (!account) return "monthly";
     if (account.accountType) return account.accountType;
@@ -503,19 +671,6 @@ const AccountsPage = () => {
     return "REF-" + Math.random().toString(36).substr(2, 9).toUpperCase();
   };
 
-  // const loadPaymentHistory = async (accountId) => {
-  //   try {
-  //     const response = await getPaymentHistory(accountId);
-  //     const historyData = response.data.data || [];
-  //     const sortedHistory = historyData.sort(
-  //       (a, b) => new Date(b.date) - new Date(a.date)
-  //     );
-  //     setPaymentHistory(sortedHistory);
-  //   } catch (error) {
-  //     console.error("Error loading payment history:", error);
-  //     setPaymentHistory([]);
-  //   }
-  // };
   const loadPaymentHistory = async (accountId) => {
     try {
       console.log("📋 Loading payment history for account:", accountId);
@@ -572,6 +727,73 @@ const AccountsPage = () => {
     }
   };
 
+  const loadWithdrawalHistory = async (accountId) => {
+    try {
+      setLoadingWithdrawalHistory(true);
+      console.log("📋 Loading withdrawal history for account:", accountId);
+
+      const response = await getWithdrawalHistory(accountId);
+      console.log("📊 Withdrawal history API response:", response.data);
+
+      // Handle different response structures
+      let historyData = [];
+
+      if (response.data && response.data.data) {
+        historyData = response.data.data;
+      } else if (response.data && Array.isArray(response.data)) {
+        historyData = response.data;
+      } else if (response.data && response.data.withdrawals) {
+        historyData = response.data.withdrawals;
+      } else if (response.data && response.data.transactions) {
+        historyData = response.data.transactions.filter(
+          (t) => t.type === "withdrawal"
+        );
+      }
+
+      console.log("📈 Processed withdrawal history data:", historyData);
+
+      // Sort by date descending (newest first)
+      const sortedHistory = historyData.sort(
+        (a, b) =>
+          new Date(b.date || b.createdAt || b.transactionDate) -
+          new Date(a.date || a.createdAt || a.transactionDate)
+      );
+
+      setWithdrawalHistory(sortedHistory);
+    } catch (error) {
+      console.error("❌ Error loading withdrawal history:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+
+      // Fallback: Try to get withdrawal transactions from account data
+      try {
+        const account = accounts.find((acc) => acc._id === accountId);
+        if (account && account.transactions) {
+          console.log("🔄 Using account withdrawal transactions as fallback");
+          const withdrawals = account.transactions
+            .filter((t) => t.type === "withdrawal")
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+          setWithdrawalHistory(withdrawals);
+        } else {
+          setWithdrawalHistory([]);
+        }
+      } catch (fallbackError) {
+        console.error("❌ Fallback also failed:", fallbackError);
+        setWithdrawalHistory([]);
+      }
+    } finally {
+      setLoadingWithdrawalHistory(false);
+    }
+  };
+
+  const handleViewWithdrawalHistory = async (account) => {
+    await loadWithdrawalHistory(account._id);
+    setSelectedAccount(account);
+    setShowWithdrawalHistoryModal(true);
+  };
+
   const handleClosePaymentModal = () => {
     setShowPaymentModal(false);
     setSelectedAccount(null);
@@ -587,63 +809,16 @@ const AccountsPage = () => {
     }
   };
 
-  // const handlePayment = (account) => {
-  //   const pending = pendingPayments[account._id];
-
-  //   if (pending?.isMaturityReached) {
-  //     alert(
-  //       "Congratulations! You have reached the maturity amount for this account. No further payments are required."
-  //     );
-  //     return;
-  //   }
-
-  //   if (pending && pending.hasPending) {
-  //     const planType = pending.planType || getPlanTypeFromAccount(account);
-  //     const pendingTimeDisplay = getPendingTimeDisplay(account, pending);
-  //     const confirmMessage = `You have ${
-  //       pending.count
-  //     } pending ${planType} payment${pending.count > 1 ? "s" : ""} totaling ₹${
-  //       pending.amount
-  //     }. \n\nApproximately ${pendingTimeDisplay} remaining to reach maturity.\n\nDo you want to pay the pending amount of ₹${
-  //       pending.amount
-  //     } instead of the regular ${planType} amount of ₹${account.dailyAmount}?`;
-
-  //     if (window.confirm(confirmMessage)) {
-  //       setSelectedAccount({
-  //         ...account,
-  //         pendingAmount: pending.amount,
-  //         isPendingPayment: true,
-  //         maturityAmount: pending.maturityAmount,
-  //         totalPaidAmount: pending.totalPaidAmount,
-  //         remainingMaturityAmount: pending.remainingMaturityAmount,
-  //         pendingDetails: pending,
-  //       });
-  //     } else {
-  //       setSelectedAccount({
-  //         ...account,
-  //         maturityAmount: pending.maturityAmount,
-  //         totalPaidAmount: pending.totalPaidAmount,
-  //         remainingMaturityAmount: pending.remainingMaturityAmount,
-  //         pendingDetails: pending,
-  //       });
-  //     }
-  //   } else {
-  //     setSelectedAccount({
-  //       ...account,
-  //       maturityAmount: pending?.maturityAmount || 0,
-  //       totalPaidAmount: pending?.totalPaidAmount || 0,
-  //       remainingMaturityAmount: pending?.remainingMaturityAmount || 0,
-  //       pendingDetails: pending,
-  //     });
-  //   }
-
-  //   setReferenceNumber(generateReferenceNumber());
-  //   setCustomAmount("");
-  //   setIsCustomPayment(false);
-  //   setShowPaymentModal(true);
-  // };
   const handlePayment = (account) => {
     const pending = pendingPayments[account._id];
+
+    // FIXED: Check if today's payment is already made (no pending for today)
+    if (pending?.hasPaidToday) {
+      alert(
+        "You have already made the payment for today. Please wait for the next payment period."
+      );
+      return;
+    }
 
     if (pending?.isMaturityReached) {
       alert(
@@ -703,6 +878,7 @@ const AccountsPage = () => {
     setIsCustomPayment(false);
     setShowPaymentModal(true);
   };
+
   const calculateCoveredPeriods = (pending, paymentAmount) => {
     if (!pending?.missedPeriods || paymentAmount <= 0) return [];
     let coveredAmount = 0;
@@ -739,168 +915,6 @@ const AccountsPage = () => {
     }
   };
 
-  // const handleProcessPayment = async () => {
-  //   try {
-  //     setProcessingPayment(true);
-
-  //     if (paymentMethod === "online" && !referenceNumber.trim()) {
-  //       alert("Please enter a reference number for online payment");
-  //       return;
-  //     }
-
-  //     let paymentAmount;
-  //     let isPartialPayment = false;
-  //     let remainingPendingAmount = 0;
-
-  //     const pending = pendingPayments[selectedAccount._id];
-  //     const maxPendingAmount =
-  //       pending?.amount || selectedAccount.dailyAmount || 0;
-  //     const minAmount = selectedAccount.dailyAmount || 0;
-
-  //     if (isCustomPayment && customAmount) {
-  //       const enteredAmount = parseFloat(customAmount);
-
-  //       if (isNaN(enteredAmount) || enteredAmount < minAmount) {
-  //         alert(`Minimum payment amount is ₹${minAmount}`);
-  //         return;
-  //       }
-
-  //       if (enteredAmount > maxPendingAmount) {
-  //         alert(
-  //           `Payment amount cannot exceed pending amount of ₹${maxPendingAmount}`
-  //         );
-  //         return;
-  //       }
-
-  //       if (enteredAmount > pending.remainingMaturityAmount) {
-  //         alert(
-  //           `Payment amount cannot exceed remaining maturity amount of ₹${pending.remainingMaturityAmount}`
-  //         );
-  //         return;
-  //       }
-
-  //       if (!isValidMultiple(enteredAmount, minAmount)) {
-  //         const validMultiples = getValidMultiples(minAmount, maxPendingAmount);
-  //         alert(
-  //           `Please enter a valid multiple of ₹${minAmount}. Valid amounts are: ${validMultiples.join(
-  //             ", "
-  //           )}`
-  //         );
-  //         return;
-  //       }
-
-  //       paymentAmount = enteredAmount;
-  //       isPartialPayment = paymentAmount < maxPendingAmount;
-  //       remainingPendingAmount = maxPendingAmount - paymentAmount;
-  //     } else {
-  //       paymentAmount = maxPendingAmount;
-  //       if (paymentAmount > pending.remainingMaturityAmount) {
-  //         paymentAmount = pending.remainingMaturityAmount;
-  //         isPartialPayment = true;
-  //         remainingPendingAmount = 0;
-  //       }
-  //     }
-
-  //     const coveredPeriods = calculateCoveredPeriods(pending, paymentAmount);
-  //     const isPendingPayment = selectedAccount.isPendingPayment;
-  //     const paymentStatus = paymentMethod === "cash" ? "pending" : "completed";
-
-  //     const paymentData = {
-  //       accountId: selectedAccount._id,
-  //       customerId: customer._id,
-  //       amount: paymentAmount,
-  //       paymentMethod: paymentMethod,
-  //       referenceNumber: referenceNumber,
-  //       status: paymentStatus,
-  //       isPendingPayment: isPendingPayment,
-  //       isPartialPayment: isPartialPayment,
-  //       remainingPendingAmount: remainingPendingAmount,
-  //       type: "deposit",
-  //       date: new Date().toISOString(),
-  //       paymentPeriod: isPendingPayment ? "pending" : "current",
-  //       maturityAmount: pending.maturityAmount,
-  //       totalPaidAmount: pending.totalPaidAmount,
-  //       coveredPeriods: coveredPeriods,
-  //     };
-
-  //     const response = await processPayment(paymentData);
-
-  //     if (response.data.success) {
-  //       // Store paid periods in localStorage
-  //       const storedPaidPeriods = JSON.parse(
-  //         localStorage.getItem("paidPeriods") || "{}"
-  //       );
-  //       storedPaidPeriods[selectedAccount._id] = [
-  //         ...(storedPaidPeriods[selectedAccount._id] || []),
-  //         ...coveredPeriods.map((period) => ({
-  //           periodId: period.periodId,
-  //           date: period.date,
-  //           amount: period.amount,
-  //           type: period.type,
-  //           paymentDate: new Date().toISOString(),
-  //           paymentAmount: paymentAmount,
-  //         })),
-  //       ];
-  //       localStorage.setItem("paidPeriods", JSON.stringify(storedPaidPeriods));
-  //       setPaidPeriodsMap(storedPaidPeriods);
-
-  //       let alertMessage = "";
-  //       if (paymentMethod === "cash") {
-  //         if (isPartialPayment) {
-  //           alertMessage = `Partial cash payment recorded as PENDING!\nReference: ${referenceNumber}\nAmount Paid: ₹${paymentAmount}\nRemaining Pending: ₹${remainingPendingAmount}\nStatus: ${paymentStatus}\n\nOur collector will verify and mark this payment as completed.`;
-  //         } else {
-  //           alertMessage = `Cash payment recorded as PENDING!\nReference: ${referenceNumber}\nAmount: ₹${paymentAmount}\nStatus: ${paymentStatus}\n\nOur collector will verify and mark this payment as completed.`;
-  //         }
-  //         alertMessage += `\n\n💰 The amount ₹${paymentAmount} will be added to your current balance ONLY AFTER the collector verifies and marks it as completed.`;
-  //       } else {
-  //         if (isPartialPayment) {
-  //           alertMessage = `Partial online payment completed successfully!\nReference: ${referenceNumber}\nAmount Paid: ₹${paymentAmount}\nRemaining Pending: ₹${remainingPendingAmount}\nStatus: ${paymentStatus}`;
-  //         } else {
-  //           alertMessage = `Online payment completed successfully!\nReference: ${referenceNumber}\nAmount: ₹${paymentAmount}\nStatus: ${paymentStatus}`;
-  //         }
-  //         alertMessage += `\n\n💰 The amount ₹${paymentAmount} has been added to your current balance.`;
-  //       }
-
-  //       if (coveredPeriods.length > 0) {
-  //         const periodType = pending.planType || getPlanTypeFromAccount(selectedAccount);
-  //         alertMessage += `\n\nThis payment covers ${
-  //           coveredPeriods.length
-  //         } ${periodType}${coveredPeriods.length > 1 ? "s" : ""}:`;
-  //         coveredPeriods.forEach((period) => {
-  //           const dateStr = period.date.toLocaleDateString();
-  //           alertMessage += `\n• ${dateStr} - ₹${period.amount}`;
-  //         });
-
-  //         if (isPartialPayment && remainingPendingAmount > 0) {
-  //           alertMessage += `\n\nRemaining pending: ${
-  //             pending.missedPeriods.length - coveredPeriods.length
-  //           } ${periodType}${
-  //             pending.missedPeriods.length - coveredPeriods.length > 1
-  //               ? "s"
-  //               : ""
-  //           } (₹${remainingPendingAmount})`;
-  //         }
-  //       }
-
-  //       const newTotalPaid = pending.totalPaidAmount + paymentAmount;
-  //       if (newTotalPaid >= pending.maturityAmount) {
-  //         alertMessage += `\n\n🎉 Congratulations! You have reached the maturity amount of ₹${pending.maturityAmount}!`;
-  //       }
-
-  //       alert(alertMessage);
-
-  //       handleClosePaymentModal();
-  //       await loadCustomerAccounts(); // Refresh to get updated data
-  //     } else {
-  //       throw new Error("Payment processing failed");
-  //     }
-  //   } catch (error) {
-  //     console.error("Payment error:", error);
-  //     alert("Payment failed. Please try again.");
-  //   } finally {
-  //     setProcessingPayment(false);
-  //   }
-  // };
   const handleProcessPayment = async () => {
     try {
       setProcessingPayment(true);
@@ -915,9 +929,11 @@ const AccountsPage = () => {
       let remainingPendingAmount = 0;
 
       const pending = pendingPayments[selectedAccount._id];
-      const maxPendingAmount =
-        pending?.amount || selectedAccount.dailyAmount || 0;
-      const minAmount = selectedAccount.dailyAmount || 0;
+      const regularAmount = selectedAccount.dailyAmount || 0;
+      
+      // ✅ FIXED: Use fullPendingAmount for max amount calculation
+      const maxAmount = pending?.fullPendingAmount || regularAmount;
+      const minAmount = regularAmount;
 
       if (isCustomPayment && customAmount) {
         const enteredAmount = parseFloat(customAmount);
@@ -927,9 +943,9 @@ const AccountsPage = () => {
           return;
         }
 
-        if (enteredAmount > maxPendingAmount) {
+        if (enteredAmount > maxAmount) {
           alert(
-            `Payment amount cannot exceed pending amount of ₹${maxPendingAmount}`
+            `Payment amount cannot exceed pending amount of ₹${maxAmount}`
           );
           return;
         }
@@ -942,7 +958,7 @@ const AccountsPage = () => {
         }
 
         if (!isValidMultiple(enteredAmount, minAmount)) {
-          const validMultiples = getValidMultiples(minAmount, maxPendingAmount);
+          const validMultiples = getValidMultiples(minAmount, maxAmount);
           alert(
             `Please enter a valid multiple of ₹${minAmount}. Valid amounts are: ${validMultiples.join(
               ", "
@@ -952,10 +968,11 @@ const AccountsPage = () => {
         }
 
         paymentAmount = enteredAmount;
-        isPartialPayment = paymentAmount < maxPendingAmount;
-        remainingPendingAmount = maxPendingAmount - paymentAmount;
+        isPartialPayment = paymentAmount < maxAmount;
+        remainingPendingAmount = maxAmount - paymentAmount;
       } else {
-        paymentAmount = maxPendingAmount;
+        // ✅ FIXED: Use the full pending amount when not in custom payment mode
+        paymentAmount = maxAmount;
         if (paymentAmount > pending.remainingMaturityAmount) {
           paymentAmount = pending.remainingMaturityAmount;
           isPartialPayment = true;
@@ -994,6 +1011,9 @@ const AccountsPage = () => {
       console.log("💰 Payment data being sent:", {
         ...paymentData,
         collectorId: collectorId ? "PRESENT" : "MISSING",
+        paymentAmount: paymentAmount,
+        maxAmount: maxAmount,
+        isPartialPayment: isPartialPayment,
       });
 
       const response = await processPayment(paymentData);
@@ -1075,6 +1095,7 @@ const AccountsPage = () => {
       setProcessingPayment(false);
     }
   };
+
   useEffect(() => {
     if (
       showPaymentModal &&
@@ -1109,6 +1130,98 @@ const AccountsPage = () => {
   const handleViewAccountDetails = (account) => {
     setSelectedAccount(account);
     setShowDetailsModal(true);
+  };
+
+  const handleWithdrawal = async () => {
+    if (!selectedAccount) return;
+
+    try {
+      setProcessingWithdrawal(true);
+
+      const amount = parseFloat(withdrawalAmount);
+      const currentBalance = selectedAccount.currentBalance || 0;
+
+      if (isNaN(amount) || amount <= 0) {
+        alert("Please enter a valid withdrawal amount");
+        return;
+      }
+
+      if (amount > currentBalance) {
+        alert(`Insufficient balance. Available balance: ₹${currentBalance}`);
+        return;
+      }
+
+      if (!withdrawalReason.trim()) {
+        alert("Please provide a reason for withdrawal");
+        return;
+      }
+
+      // STEP 1: Get collectorId from the selected account
+      const collectorId =
+        selectedAccount.collectorId?._id || selectedAccount.collectorId;
+
+      const withdrawalData = {
+        accountNumber: selectedAccount.accountNumber,
+        amount: amount,
+        reason: withdrawalReason,
+        type: "withdrawal",
+        status: "pending",
+        collectorId: collectorId,
+        customerId: customer?._id,
+      };
+
+      console.log("💰 Sending withdrawal data:", withdrawalData);
+
+      const response = await withdrawAmount(withdrawalData);
+
+      if (response.data.success) {
+        const updatedBalance =
+          response.data.data.currentBalance || currentBalance - amount;
+
+        alert(
+          `Withdrawal request submitted successfully!\nAmount: ₹${amount}\nStatus: Pending approval\nReference: ${response.data.data.referenceNumber}\nUpdated Balance: ₹${updatedBalance}`
+        );
+
+        // Reset form
+        setWithdrawalAmount("");
+        setWithdrawalReason("");
+
+        // Immediately update the UI with the new balance
+        updateAccountBalance(selectedAccount._id, updatedBalance);
+
+        // Also refresh accounts to get the latest data
+        await loadCustomerAccounts();
+      } else {
+        throw new Error("Withdrawal request failed");
+      }
+    } catch (error) {
+      console.error("Withdrawal error:", error);
+      alert(
+        error.response?.data?.message ||
+          "Withdrawal request failed. Please try again."
+      );
+    } finally {
+      setProcessingWithdrawal(false);
+    }
+  };
+
+  // Add this helper function to immediately update the account balance in the UI
+  const updateAccountBalance = (accountId, newBalance) => {
+    setAccounts((prevAccounts) =>
+      prevAccounts.map((account) =>
+        account._id === accountId
+          ? { ...account, currentBalance: newBalance }
+          : account
+      )
+    );
+
+    // Also update selectedAccount if it's the same account
+    if (selectedAccount && selectedAccount._id === accountId) {
+      setSelectedAccount((prev) => ({
+        ...prev,
+        currentBalance: newBalance,
+      }));
+    }
   };
 
   const getAccountTypeColor = (type) => {
@@ -1146,7 +1259,7 @@ const AccountsPage = () => {
     return Math.min((balance / targetAmount) * 100, 100);
   };
 
-  // Account Details Modal Component
+  // Enhanced Account Details Modal Component
   const AccountDetailsModal = () => {
     if (!showDetailsModal || !selectedAccount) return null;
 
@@ -1154,109 +1267,161 @@ const AccountsPage = () => {
     const durationDisplay = getDurationDisplayFromAccount(selectedAccount);
     const pending = pendingPayments[selectedAccount._id];
     const pendingTimeDisplay = getPendingTimeDisplay(selectedAccount, pending);
+    const planType = getPlanTypeFromAccount(selectedAccount);
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
-          <div className="p-6 border-b border-gray-200">
+        <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+          {/* Header */}
+          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold">Account Details</h3>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white bg-opacity-20 rounded-lg">
+                  {getAccountTypeIcon(selectedAccount.type)}
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold">Account Details</h3>
+                  <p className="text-blue-100">
+                    {selectedAccount.accountNumber} • {selectedAccount.type}
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={() => setShowDetailsModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-white hover:text-blue-200 transition-colors p-2"
               >
                 <XCircle className="h-6 w-6" />
               </button>
             </div>
-            <p className="text-gray-600 mt-1">
-              {selectedAccount.accountNumber} - {selectedAccount.type}
-            </p>
           </div>
 
-          <div className="p-6 space-y-6">
-            {/* Basic Information */}
-            <div>
-              <h4 className="text-lg font-semibold mb-4 text-gray-900">
-                Basic Information
-              </h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-600">Account Type</p>
-                  <p className="font-semibold text-gray-900 capitalize">
-                    {selectedAccount.type}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Status</p>
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      selectedAccount.status === "active"
-                        ? "bg-green-100 text-green-800"
-                        : selectedAccount.status === "closed"
-                        ? "bg-red-100 text-red-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {selectedAccount.status}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-gray-600">Interest Rate</p>
-                  <p className="font-semibold text-green-600">
-                    {selectedAccount.planId?.interestRate ||
-                      selectedAccount.interestRate ||
-                      "N/A"}
-                    %
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-600">
-                    {amountLabel === "week"
-                      ? "Weekly Amount"
-                      : amountLabel === "month"
-                      ? "Monthly Amount"
-                      : "Daily Amount"}
-                  </p>
-                  <p className="font-semibold">
-                    ₹{selectedAccount.dailyAmount || "0"}/{amountLabel}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Duration</p>
-                  <p className="font-semibold text-gray-900">
-                    {durationDisplay}
-                  </p>
-                </div>
-                {selectedAccount.planId && (
-                  <div>
-                    <p className="text-gray-600">Plan</p>
-                    <p className="font-semibold text-gray-900">
-                      {selectedAccount.planId.name}
-                    </p>
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-6 space-y-6">
+              {/* Quick Actions */}
+              <div className="grid grid-cols-3 gap-4">
+                <button
+                  onClick={() => {
+                    setShowDetailsModal(false);
+                    handlePayment(selectedAccount);
+                  }}
+                  disabled={pending?.isMaturityReached || pending?.hasPaidToday}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    pending?.isMaturityReached || pending?.hasPaidToday
+                      ? "border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed"
+                      : pending?.hasPending
+                      ? "border-red-500 bg-red-50 text-red-700 hover:bg-red-100"
+                      : "border-green-500 bg-green-50 text-green-700 hover:bg-green-100"
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <DollarSign className="h-5 w-5" />
+                    <span className="font-semibold">
+                      {pending?.isMaturityReached
+                        ? "Maturity Reached"
+                        : pending?.hasPaidToday
+                        ? "Already Paid Today"
+                        : pending?.hasPending
+                        ? "Pay Pending"
+                        : "Make Payment"}
+                    </span>
                   </div>
-                )}
-              </div>
-            </div>
+                </button>
 
-            {/* Financial Information */}
-            {pending && (
-              <div>
-                <h4 className="text-lg font-semibold mb-4 text-gray-900">
-                  Financial Information
-                </h4>
-                <div className="space-y-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <button
+                  onClick={() => {
+                    setShowDetailsModal(false);
+                    handleViewPaymentHistory(selectedAccount);
+                  }}
+                  className="p-4 rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all"
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <Clock className="h-5 w-5" />
+                    <span className="font-semibold">Payment History</span>
+                  </div>
+                </button>
+
+                <button
+                hidden
+                  onClick={() => {
+                    setShowDetailsModal(false);
+                    handleViewWithdrawalHistory(selectedAccount);
+                  }}
+                  className="p-4 rounded-xl border-2 border-orange-500 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-all"
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <History className="h-5 w-5" />
+                    <span className="font-semibold">Withdrawal History</span>
+                  </div>
+                </button>
+              </div>
+
+              {/* Financial Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-4 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Wallet className="h-4 w-4" />
+                    <span className="text-sm font-medium">Current Balance</span>
+                  </div>
+                  <p className="text-2xl font-bold">
+                    ₹{selectedAccount.currentBalance?.toLocaleString() || "0"}
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-4 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Target className="h-4 w-4" />
+                    <span className="text-sm font-medium">Maturity Amount</span>
+                  </div>
+                  <p className="text-2xl font-bold">
+                    ₹{pending?.maturityAmount?.toLocaleString() || "0"}
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-4 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="h-4 w-4" />
+                    <span className="text-sm font-medium">Total Paid</span>
+                  </div>
+                  <p className="text-2xl font-bold">
+                    ₹{pending?.totalPaidAmount?.toLocaleString() || "0"}
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-4 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar className="h-4 w-4" />
+                    <span className="text-sm font-medium">Remaining</span>
+                  </div>
+                  <p className="text-2xl font-bold">
+                    ₹{pending?.remainingMaturityAmount?.toLocaleString() || "0"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Progress Section */}
+              {pending && (
+                <div className="bg-white border border-gray-200 rounded-xl p-6">
+                  <h4 className="text-lg font-semibold mb-4 text-gray-900">
+                    Maturity Progress
+                  </h4>
+                  <div className="space-y-4">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-blue-800">
-                        Maturity Progress
+                      <span className="text-sm font-semibold text-gray-700">
+                        Progress:{" "}
+                        {calculateProgress(
+                          pending.totalPaidAmount,
+                          pending.maturityAmount
+                        ).toFixed(1)}
+                        %
                       </span>
                       <span className="text-sm font-bold text-blue-600">
                         ₹{pending.totalPaidAmount} / ₹{pending.maturityAmount}
                       </span>
                     </div>
-                    <div className="w-full bg-blue-200 rounded-full h-2">
+                    <div className="w-full bg-gray-200 rounded-full h-4">
                       <div
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        className="bg-gradient-to-r from-blue-500 to-purple-600 h-4 rounded-full transition-all duration-500"
                         style={{
                           width: `${calculateProgress(
                             pending.totalPaidAmount,
@@ -1265,199 +1430,334 @@ const AccountsPage = () => {
                         }}
                       ></div>
                     </div>
-                    <p className="text-xs text-blue-700 mt-1">
-                      {calculateProgress(
-                        pending.totalPaidAmount,
-                        pending.maturityAmount
-                      ).toFixed(1)}
-                      % Complete • {pendingTimeDisplay} remaining
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-600">Current Balance</p>
-                      <p className="text-lg font-bold text-blue-600">
-                        ₹
-                        {selectedAccount.currentBalance?.toLocaleString() ||
-                          "0"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Maturity Amount</p>
-                      <p className="font-semibold text-purple-600">
-                        ₹{pending.maturityAmount?.toLocaleString() || "0"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Total Paid</p>
-                      <p className="font-semibold text-green-600">
-                        ₹{pending.totalPaidAmount?.toLocaleString() || "0"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Remaining</p>
-                      <p className="font-semibold text-orange-600">
-                        ₹
-                        {pending.remainingMaturityAmount?.toLocaleString() ||
-                          "0"}
-                      </p>
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Started</span>
+                      <span>{pendingTimeDisplay} remaining</span>
                     </div>
                   </div>
 
+                  {/* Maturity Calculation */}
                   {pending.maturityCalculation && (
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                      <h5 className="text-sm font-semibold text-gray-800 mb-2">
+                    <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                      <h5 className="font-semibold text-gray-800 mb-3">
                         Maturity Calculation
                       </h5>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <p className="text-gray-600">Principal Amount</p>
-                          <p className="font-semibold">
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div className="text-center">
+                          <p className="text-gray-600">Principal</p>
+                          <p className="font-bold text-gray-900">
                             ₹{pending.principalAmount?.toLocaleString()}
                           </p>
                         </div>
-                        <div>
-                          <p className="text-gray-600">Interest Amount</p>
-                          <p className="font-semibold">
+                        <div className="text-center">
+                          <p className="text-gray-600">Interest</p>
+                          <p className="font-bold text-green-600">
                             ₹{pending.interestAmount?.toLocaleString()}
                           </p>
                         </div>
-                        <div className="col-span-2 text-center">
-                          <p className="text-gray-600">Interest Rate</p>
-                          <p className="font-semibold">
+                        <div className="text-center">
+                          <p className="text-gray-600">Rate</p>
+                          <p className="font-bold text-blue-600">
                             {pending.maturityCalculation.interestRate}%
                           </p>
                         </div>
                       </div>
                     </div>
                   )}
-
-                  {/* Pending Payment Information */}
-                  {pending?.hasPending && !pending?.isMaturityReached && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                      <div className="flex items-center mb-2">
-                        <AlertTriangle className="h-4 w-4 text-red-600 mr-2" />
-                        <p className="text-sm font-semibold text-red-800">
-                          Pending Payments
-                        </p>
-                      </div>
-                      <p className="text-sm text-red-700 mb-2">
-                        {pending.count} pending{" "}
-                        {pending.planType ||
-                          getPlanTypeFromAccount(selectedAccount)}{" "}
-                        payment
-                        {pending.count > 1 ? "s" : ""} - ₹{pending.amount}
-                      </p>
-                      {pending.missedPeriods &&
-                        pending.missedPeriods.length > 0 && (
-                          <div className="text-xs text-red-600">
-                            <p className="font-semibold mb-1">Missed dates:</p>
-                            {pending.missedPeriods
-                              .slice(0, 5)
-                              .map((period, index) => (
-                                <div key={index}>
-                                  • {period.date.toLocaleDateString()} - ₹
-                                  {period.amount}
-                                </div>
-                              ))}
-                            {pending.missedPeriods.length > 5 && (
-                              <div>
-                                ... and {pending.missedPeriods.length - 5} more
-                              </div>
-                            )}
-                          </div>
-                        )}
-                    </div>
-                  )}
-
-                  {/* Time Remaining Information */}
-                  {!pending.isMaturityReached && (
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-orange-800">
-                          Estimated Time Remaining
-                        </span>
-                        <span className="text-sm font-bold text-orange-600">
-                          {pendingTimeDisplay}
-                        </span>
-                      </div>
-                      <p className="text-xs text-orange-700 mt-1">
-                        Based on {pending.pendingDays} payment
-                        {pending.pendingDays > 1 ? "s" : ""} of ₹
-                        {selectedAccount.dailyAmount || "0"} per {amountLabel}
-                      </p>
-                      <p className="text-xs text-orange-600 mt-1">
-                        Calculation: ₹{pending.remainingMaturityAmount} ÷ ₹
-                        {selectedAccount.dailyAmount} = {pending.pendingDays}{" "}
-                        {amountLabel}
-                        {pending.pendingDays > 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Maturity Reached Message */}
-                  {pending?.isMaturityReached && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
-                      <CheckCircle className="h-5 w-5 text-green-600 mx-auto mb-2" />
-                      <p className="text-sm font-semibold text-green-800">
-                        Maturity Amount Reached! 🎉
-                      </p>
-                      <p className="text-xs text-green-700">
-                        No further payments required
-                      </p>
-                    </div>
-                  )}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Collector Information */}
-            {selectedAccount.collectorId && (
-              <div>
-                <h4 className="text-lg font-semibold mb-4 text-gray-900">
-                  Collector Information
-                </h4>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <p className="text-gray-600">Name</p>
-                      <p className="font-semibold">
-                        {selectedAccount.collectorId.name}
-                      </p>
+              {/* Account Information Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Basic Information */}
+                <div className="bg-white border border-gray-200 rounded-xl p-6">
+                  <h4 className="text-lg font-semibold mb-4 text-gray-900 flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Account Information
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                      <span className="text-gray-600">Account Type</span>
+                      <span className="font-semibold capitalize">
+                        {selectedAccount.type}
+                      </span>
                     </div>
-                    <div>
-                      <p className="text-gray-600">Area</p>
-                      <p className="font-semibold">
-                        {selectedAccount.collectorId.area}
-                      </p>
+                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                      <span className="text-gray-600">Status</span>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          selectedAccount.status === "active"
+                            ? "bg-green-100 text-green-800"
+                            : selectedAccount.status === "closed"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {selectedAccount.status}
+                      </span>
                     </div>
-                    <div>
-                      <p className="text-gray-600">Phone</p>
-                      <p className="font-semibold">
-                        {selectedAccount.collectorId.phone}
-                      </p>
+                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                      <span className="text-gray-600">Plan Type</span>
+                      <span className="font-semibold capitalize">
+                        {planType}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                      <span className="text-gray-600">
+                        {amountLabel === "week"
+                          ? "Weekly Amount"
+                          : amountLabel === "month"
+                          ? "Monthly Amount"
+                          : "Daily Amount"}
+                      </span>
+                      <span className="font-semibold">
+                        ₹{selectedAccount.dailyAmount || "0"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                      <span className="text-gray-600">Duration</span>
+                      <span className="font-semibold">{durationDisplay}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-gray-600">Interest Rate</span>
+                      <span className="font-semibold text-green-600">
+                        {selectedAccount.planId?.interestRate ||
+                          selectedAccount.interestRate ||
+                          "N/A"}
+                        %
+                      </span>
                     </div>
                   </div>
                 </div>
+
+                {/* Withdrawal Section */}
+                <div className="bg-white border border-gray-200 rounded-xl p-6">
+                  <h4 className="text-lg font-semibold mb-4 text-gray-900 flex items-center gap-2">
+                    <Download className="h-5 w-5" />
+                    Withdrawal Request
+                  </h4>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Withdrawal Amount
+                      </label>
+                      <input
+                        type="number"
+                        value={withdrawalAmount}
+                        onChange={(e) => setWithdrawalAmount(e.target.value)}
+                        placeholder="Enter amount to withdraw"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        min="0"
+                        max={selectedAccount.currentBalance}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Available balance: ₹
+                        {selectedAccount.currentBalance?.toLocaleString() ||
+                          "0"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Reason for Withdrawal
+                      </label>
+                      <textarea
+                        value={withdrawalReason}
+                        onChange={(e) => setWithdrawalReason(e.target.value)}
+                        placeholder="Please specify the reason for withdrawal"
+                        rows="3"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                      />
+                    </div>
+
+                    <button
+                      onClick={handleWithdrawal}
+                      disabled={
+                        processingWithdrawal ||
+                        !withdrawalAmount ||
+                        parseFloat(withdrawalAmount) <= 0 ||
+                        parseFloat(withdrawalAmount) >
+                          selectedAccount.currentBalance ||
+                        !withdrawalReason.trim()
+                      }
+                      className={`w-full py-3 px-4 rounded-lg font-semibold transition-all ${
+                        processingWithdrawal ||
+                        !withdrawalAmount ||
+                        parseFloat(withdrawalAmount) <= 0 ||
+                        parseFloat(withdrawalAmount) >
+                          selectedAccount.currentBalance ||
+                        !withdrawalReason.trim()
+                          ? "bg-gray-400 cursor-not-allowed text-white"
+                          : "bg-red-600 hover:bg-red-700 text-white"
+                      }`}
+                    >
+                      {processingWithdrawal ? (
+                        <div className="flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Processing...
+                        </div>
+                      ) : (
+                        "Request Withdrawal"
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
-            )}
+
+              {/* Collector Information */}
+              {selectedAccount.collectorId && (
+                <div className="bg-white border border-gray-200 rounded-xl p-6">
+                  <h4 className="text-lg font-semibold mb-4 text-gray-900 flex items-center gap-2">
+                    <User className="h-5 w-5" />
+                    Collector Information
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                      <User className="h-5 w-5 text-blue-600" />
+                      <div>
+                        <p className="text-sm text-gray-600">Name</p>
+                        <p className="font-semibold text-gray-900">
+                          {selectedAccount.collectorId.name}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
+                      <MapPin className="h-5 w-5 text-green-600" />
+                      <div>
+                        <p className="text-sm text-gray-600">Area</p>
+                        <p className="font-semibold text-gray-900">
+                          {selectedAccount.collectorId.area}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
+                      <Phone className="h-5 w-5 text-purple-600" />
+                      <div>
+                        <p className="text-sm text-gray-600">Phone</p>
+                        <p className="font-semibold text-gray-900">
+                          {selectedAccount.collectorId.phone}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Status Alert */}
+              {pending?.hasPaidToday && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-3">
+                    <CheckCircle className="h-6 w-6 text-green-600" />
+                    <h4 className="text-lg font-semibold text-green-800">
+                      Payment Already Made
+                    </h4>
+                  </div>
+                  <p className="text-green-700">
+                    You have already made the required payment for the current
+                    period. Please wait for the next payment period to make
+                    another payment.
+                  </p>
+                </div>
+              )}
+
+              {/* Pending Payments Alert */}
+              {pending?.hasPending &&
+                !pending?.isMaturityReached &&
+                !pending?.hasPaidToday && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <AlertTriangle className="h-6 w-6 text-red-600" />
+                      <h4 className="text-lg font-semibold text-red-800">
+                        Pending Payments
+                      </h4>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-red-700">
+                        You have {pending.count} pending {planType} payment
+                        {pending.count > 1 ? "s" : ""} totaling ₹
+                        {pending.amount}
+                      </p>
+                      {pending.missedPeriods &&
+                        pending.missedPeriods.length > 0 && (
+                          <div className="text-sm text-red-600">
+                            <p className="font-semibold mb-2">
+                              Missed periods:
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {pending.missedPeriods
+                                .slice(0, 6)
+                                .map((period, index) => (
+                                  <div
+                                    key={index}
+                                    className="flex items-center gap-1"
+                                  >
+                                    <div className="w-1 h-1 bg-red-500 rounded-full"></div>
+                                    {period.date.toLocaleDateString()} - ₹
+                                    {period.amount}
+                                  </div>
+                                ))}
+                              {pending.missedPeriods.length > 6 && (
+                                <div className="text-red-500">
+                                  ... and {pending.missedPeriods.length - 6}{" "}
+                                  more
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  </div>
+                )}
+
+              {/* Maturity Reached Message */}
+              {pending?.isMaturityReached && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+                  <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-3" />
+                  <h4 className="text-xl font-semibold text-green-800 mb-2">
+                    Maturity Amount Reached! 🎉
+                  </h4>
+                  <p className="text-green-700">
+                    Congratulations! You have successfully reached the maturity
+                    amount of ₹{pending.maturityAmount}. No further payments are
+                    required.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
+          {/* Footer */}
           <div className="p-6 border-t border-gray-200 bg-gray-50">
-            <button
-              onClick={() => setShowDetailsModal(false)}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-            >
-              Close
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                className="flex-1 border border-gray-300 text-gray-700 px-6 py-3 rounded-xl hover:bg-gray-50 font-medium transition-colors"
+              >
+                Close
+              </button>
+              {!pending?.isMaturityReached && !pending?.hasPaidToday && (
+                <button
+                  onClick={() => {
+                    setShowDetailsModal(false);
+                    handlePayment(selectedAccount);
+                  }}
+                  className={`flex-1 px-6 py-3 rounded-xl font-medium text-white transition-colors ${
+                    pending?.hasPending
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "bg-green-600 hover:bg-green-700"
+                  }`}
+                >
+                  {pending?.hasPending ? "Pay Pending Amount" : "Make Payment"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
     );
   };
 
-  // Payment Modal Component
+  // Payment Modal Component - FIXED: Full Amount calculation
   const PaymentModal = () => {
     if (!showPaymentModal || !selectedAccount) return null;
 
@@ -1466,16 +1766,16 @@ const AccountsPage = () => {
     const pendingAmount = selectedAccount.pendingAmount || regularAmount;
     const isPendingPayment = selectedAccount.isPendingPayment;
     const minAmount = regularAmount;
-    const maxAmount = Math.min(
-      pendingAmount,
-      selectedAccount.remainingMaturityAmount || pendingAmount
-    );
+    
+    // ✅ FIXED: Use fullPendingAmount for max amount calculation
+    const pending = pendingPayments[selectedAccount._id];
+    const maxAmount = pending?.fullPendingAmount || regularAmount;
+    
     const maturityAmount = selectedAccount.maturityAmount || 0;
     const totalPaidAmount = selectedAccount.totalPaidAmount || 0;
     const remainingMaturityAmount =
       selectedAccount.remainingMaturityAmount || maturityAmount;
     const pendingDetails = selectedAccount.pendingDetails;
-    const pending = pendingPayments[selectedAccount._id];
     const pendingTimeDisplay = getPendingTimeDisplay(selectedAccount, pending);
     const coveredPeriods = coveredPeriodsMap[selectedAccount._id] || [];
 
@@ -1509,38 +1809,6 @@ const AccountsPage = () => {
                 <p className="font-semibold">
                   {selectedAccount.accountNumber} - {selectedAccount.type}
                 </p>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center">
-                      <Target className="h-4 w-4 text-blue-600 mr-2" />
-                      <span className="text-sm font-semibold text-blue-800">
-                        Maturity Progress
-                      </span>
-                    </div>
-                    <span className="text-sm font-bold text-blue-600">
-                      ₹{totalPaidAmount} / ₹{maturityAmount}
-                    </span>
-                  </div>
-                  <div className="w-full bg-blue-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{
-                        width: `${calculateProgress(
-                          totalPaidAmount,
-                          maturityAmount
-                        )}%`,
-                      }}
-                    ></div>
-                  </div>
-                  <p className="text-xs text-blue-700 mt-1">
-                    Remaining: ₹{remainingMaturityAmount} •{" "}
-                    {calculateProgress(totalPaidAmount, maturityAmount).toFixed(
-                      1
-                    )}
-                    % Complete • {pendingTimeDisplay} remaining
-                  </p>
-                </div>
 
                 <p className="text-sm text-gray-600 mt-3">
                   {isPendingPayment
@@ -1790,7 +2058,7 @@ const AccountsPage = () => {
                   hasPendingPayments && isCustomPayment && customAmount ? (
                     "Pay Partial Amount"
                   ) : (
-                    "Pay Pending Amount"
+                    "Pay Full Amount"
                   )
                 ) : (
                   "Confirm Payment"
@@ -1803,118 +2071,6 @@ const AccountsPage = () => {
     );
   };
 
-  // Payment History Modal Component
-  // const PaymentHistoryModal = () => {
-  //   if (!showHistoryModal || !selectedAccount) return null;
-
-  //   const pending = pendingPayments[selectedAccount._id];
-
-  //   return (
-  //     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-  //       <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
-  //         <div className="p-6 border-b border-gray-200">
-  //           <div className="flex items-center justify-between">
-  //             <h3 className="text-xl font-bold">Payment History</h3>
-  //             <button
-  //               onClick={() => setShowHistoryModal(false)}
-  //               className="text-gray-400 hover:text-gray-600"
-  //             >
-  //               <XCircle className="h-6 w-6" />
-  //             </button>
-  //           </div>
-  //           <p className="text-gray-600 mt-1">
-  //             {selectedAccount.accountNumber} - {selectedAccount.type}
-  //           </p>
-
-  //           {/* Current Balance Display */}
-  //           <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
-  //             <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-  //               <p className="text-green-700 font-semibold">Current Balance</p>
-  //               <p className="text-lg font-bold text-green-600">
-  //                 ₹{selectedAccount.currentBalance?.toLocaleString() || "0"}
-  //               </p>
-  //             </div>
-  //             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-  //               <p className="text-blue-700 font-semibold">Total Paid Amount</p>
-  //               <p className="text-lg font-bold text-blue-600">
-  //                 ₹{pending?.totalPaidAmount?.toLocaleString() || "0"}
-  //               </p>
-  //             </div>
-  //           </div>
-  //         </div>
-
-  //         <div className="overflow-y-auto max-h-[60vh]">
-  //           <div className="p-6">
-  //             {paymentHistory.length === 0 ? (
-  //               <div className="text-center py-8">
-  //                 <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-  //                 <p className="text-gray-600">No payment history found</p>
-  //               </div>
-  //             ) : (
-  //               <div className="space-y-4">
-  //                 {paymentHistory.map((payment) => (
-  //                   <div
-  //                     key={payment._id}
-  //                     className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-  //                   >
-  //                     <div className="flex items-center justify-between mb-3">
-  //                       <div className="flex items-center gap-3">
-  //                         <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-  //                           <CheckCircle className="h-4 w-4" />
-  //                           {payment.status.toUpperCase()}
-  //                         </div>
-  //                         <div>
-  //                           <span className="text-sm font-semibold text-gray-900">
-  //                             {new Date(payment.date).toLocaleDateString()}
-  //                           </span>
-  //                         </div>
-  //                       </div>
-  //                       <span className="text-lg font-bold text-green-600">
-  //                         ₹{payment.amount}
-  //                       </span>
-  //                     </div>
-
-  //                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-  //                       <div>
-  //                         <p className="text-gray-600">Reference</p>
-  //                         <p className="font-mono text-gray-900 text-xs">
-  //                           {payment.referenceNumber}
-  //                         </p>
-  //                       </div>
-  //                       <div>
-  //                         <p className="text-gray-600">Payment Method</p>
-  //                         <p className="capitalize text-gray-900">
-  //                           {payment.paymentMethod}
-  //                         </p>
-  //                       </div>
-  //                       <div>
-  //                         <p className="text-gray-600">Type</p>
-  //                         <p className="text-gray-900">
-  //                           {payment.isPendingPayment
-  //                             ? "Pending Payment"
-  //                             : "Regular Payment"}
-  //                         </p>
-  //                       </div>
-  //                     </div>
-  //                   </div>
-  //                 ))}
-  //               </div>
-  //             )}
-  //           </div>
-  //         </div>
-
-  //         <div className="p-6 border-t border-gray-200 bg-gray-50">
-  //           <button
-  //             onClick={() => setShowHistoryModal(false)}
-  //             className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-  //           >
-  //             Close
-  //           </button>
-  //         </div>
-  //       </div>
-  //     </div>
-  //   );
-  // };
   // Payment History Modal Component
   const PaymentHistoryModal = () => {
     if (!showHistoryModal || !selectedAccount) return null;
@@ -2150,10 +2306,236 @@ const AccountsPage = () => {
     );
   };
 
+  // Withdrawal History Modal Component
+  const WithdrawalHistoryModal = () => {
+    if (!showWithdrawalHistoryModal || !selectedAccount) return null;
+
+    // Helper function to get withdrawal date
+    const getWithdrawalDate = (withdrawal) => {
+      return (
+        withdrawal.date ||
+        withdrawal.createdAt ||
+        withdrawal.transactionDate ||
+        withdrawal.withdrawalDate
+      );
+    };
+
+    // Helper function to get withdrawal status
+    const getWithdrawalStatus = (withdrawal) => {
+      return withdrawal.status || "pending";
+    };
+
+    // Helper function to get reference number
+    const getReferenceNumber = (withdrawal) => {
+      return (
+        withdrawal.referenceNumber ||
+        withdrawal.reference ||
+        withdrawal.transactionId ||
+        withdrawal._id
+      );
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold">Withdrawal History</h3>
+              <button
+                onClick={() => setShowWithdrawalHistoryModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XCircle className="h-6 w-6" />
+              </button>
+            </div>
+            <p className="text-gray-600 mt-1">
+              {selectedAccount.accountNumber} - {selectedAccount.type}
+            </p>
+
+            {/* Current Balance Display */}
+            <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <p className="text-green-700 font-semibold">Current Balance</p>
+                <p className="text-lg font-bold text-green-600">
+                  ₹{selectedAccount.currentBalance?.toLocaleString() || "0"}
+                </p>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-blue-700 font-semibold">Total Withdrawals</p>
+                <p className="text-lg font-bold text-blue-600">
+                  ₹
+                  {withdrawalHistory
+                    .reduce(
+                      (sum, withdrawal) => sum + (withdrawal.amount || 0),
+                      0
+                    )
+                    .toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-y-auto max-h-[60vh]">
+            <div className="p-6">
+              {loadingWithdrawalHistory ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="text-gray-600 mt-2">
+                    Loading withdrawal history...
+                  </p>
+                </div>
+              ) : withdrawalHistory.length === 0 ? (
+                <div className="text-center py-8">
+                  <History className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">No withdrawal history found</p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Withdrawal records will appear here after successful
+                    transactions.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <p className="text-sm text-gray-600">
+                      Showing {withdrawalHistory.length} withdrawal
+                      {withdrawalHistory.length > 1 ? "s" : ""}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Total: ₹
+                      {withdrawalHistory
+                        .reduce(
+                          (sum, withdrawal) => sum + (withdrawal.amount || 0),
+                          0
+                        )
+                        .toLocaleString()}
+                    </p>
+                  </div>
+
+                  {withdrawalHistory.map((withdrawal, index) => (
+                    <div
+                      key={
+                        withdrawal._id ||
+                        withdrawal.transactionId ||
+                        `withdrawal-${index}`
+                      }
+                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                              getWithdrawalStatus(withdrawal) === "completed" ||
+                              getWithdrawalStatus(withdrawal) === "approved"
+                                ? "bg-green-100 text-green-800"
+                                : getWithdrawalStatus(withdrawal) === "pending"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : getWithdrawalStatus(withdrawal) === "rejected"
+                                ? "bg-red-100 text-red-800"
+                                : "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {getWithdrawalStatus(withdrawal) === "completed" ||
+                            getWithdrawalStatus(withdrawal) === "approved" ? (
+                              <CheckCircle className="h-4 w-4" />
+                            ) : getWithdrawalStatus(withdrawal) ===
+                              "pending" ? (
+                              <Clock className="h-4 w-4" />
+                            ) : (
+                              <XCircle className="h-4 w-4" />
+                            )}
+                            {getWithdrawalStatus(withdrawal).toUpperCase()}
+                          </div>
+                          <div>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {new Date(
+                                getWithdrawalDate(withdrawal)
+                              ).toLocaleDateString()}
+                            </span>
+                            <span className="text-xs text-gray-500 ml-2">
+                              {new Date(
+                                getWithdrawalDate(withdrawal)
+                              ).toLocaleTimeString()}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-lg font-bold text-red-600">
+                          - ₹{(withdrawal.amount || 0).toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-gray-600">Reference</p>
+                          <p className="font-mono text-gray-900 text-xs">
+                            {getReferenceNumber(withdrawal)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Status</p>
+                          <p className="capitalize text-gray-900">
+                            {getWithdrawalStatus(withdrawal)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Reason</p>
+                          <p className="text-gray-900">
+                            {withdrawal.reason || "Not specified"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Type</p>
+                          <p className="text-gray-900">Withdrawal</p>
+                        </div>
+                      </div>
+
+                      {/* Additional withdrawal details */}
+                      {withdrawal.approvedBy && (
+                        <div className="mt-3 p-2 bg-green-50 rounded text-xs">
+                          <p className="text-green-700 font-semibold">
+                            Approved by: {withdrawal.approvedBy}
+                          </p>
+                          {withdrawal.approvedAt && (
+                            <p className="text-green-600">
+                              On:{" "}
+                              {new Date(
+                                withdrawal.approvedAt
+                              ).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {withdrawal.rejectionReason && (
+                        <div className="mt-3 p-2 bg-red-50 rounded text-xs">
+                          <p className="text-red-700 font-semibold">
+                            Rejection Reason: {withdrawal.rejectionReason}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="p-6 border-t border-gray-200 bg-gray-50">
+            <button
+              onClick={() => setShowWithdrawalHistoryModal(false)}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Loading State
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-50 to-blue-500/5 p-6 flex items-center justify-center">
+      <div className="min-h-screen w-screen bg-gradient-to-br from-gray-50 via-gray-50 to-blue-500/5 p-6 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading your accounts...</p>
@@ -2165,7 +2547,7 @@ const AccountsPage = () => {
   // Authentication Required State
   if (error && !customer) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-50 to-blue-500/5 p-6 flex items-center justify-center">
+      <div className="min-h-screen w-screen bg-gradient-to-br from-gray-50 via-gray-50 to-blue-500/5 p-6 flex items-center justify-center">
         <div className="text-center">
           <Wallet className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
@@ -2185,12 +2567,15 @@ const AccountsPage = () => {
 
   // Main Render
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-50 to-blue-500/5 p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+ 
+      
+    <div className="min-h-screen w-screen mx-[-9.5rem] mt-[-3.5rem] bg-gradient-to-br from-gray-50 via-gray-50 to-blue-500/5 p-6">
+    <Navbar/>
+      <div className="max-w-6xl mx-auto space-y-6 mt-[2rem]">
         {/* Header */}
         <div className="flex items-center justify-between">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/pigmy")}
             className="flex items-center text-gray-600 hover:text-gray-900 bg-transparent border-none cursor-pointer"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -2233,6 +2618,7 @@ const AccountsPage = () => {
               <div
                 key={account._id}
                 className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all border border-gray-200 relative"
+                onClick={() => handleViewAccountDetails(account)}
               >
                 {/* Maturity Reached Badge */}
                 {pending?.isMaturityReached && (
@@ -2245,11 +2631,23 @@ const AccountsPage = () => {
                 )}
 
                 {/* Pending Payment Badge */}
-                {pending?.hasPending && !pending?.isMaturityReached && (
+                {pending?.hasPending &&
+                  !pending?.isMaturityReached &&
+                  !pending?.hasPaidToday && (
+                    <div className="absolute -top-2 -right-2">
+                      <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        {pending.count} Pending
+                      </span>
+                    </div>
+                  )}
+
+                {/* Already Paid Today Badge - FIXED: Only show when there are no pending payments for today */}
+                {pending?.hasPaidToday && !pending?.hasPending && (
                   <div className="absolute -top-2 -right-2">
-                    <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center">
-                      <AlertTriangle className="h-3 w-3 mr-1" />
-                      {pending.count} Pending
+                    <span className="bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Paid Today
                     </span>
                   </div>
                 )}
@@ -2339,14 +2737,21 @@ const AccountsPage = () => {
                       !pending?.isMaturityReached && (
                         <button
                           onClick={() => handlePayment(account)}
+                          disabled={pending?.hasPaidToday}
                           className={`flex-1 px-3 py-2 rounded-md transition-colors text-sm flex items-center justify-center gap-1 ${
-                            pending?.hasPending
+                            pending?.hasPaidToday
+                              ? "bg-gray-400 cursor-not-allowed text-white"
+                              : pending?.hasPending
                               ? "bg-red-600 hover:bg-red-700 text-white"
                               : "bg-green-600 hover:bg-green-700 text-white"
                           }`}
                         >
                           <DollarSign className="h-4 w-4" />
-                          {pending?.hasPending ? "Pay Pending" : "Pay"}
+                          {pending?.hasPaidToday
+                            ? "Paid Today"
+                            : pending?.hasPending
+                            ? "Pay Pending"
+                            : "Pay"}
                         </button>
                       )}
                   </div>
@@ -2377,7 +2782,7 @@ const AccountsPage = () => {
         )}
       </div>
 
-      {/* Account Details Modal */}
+      {/* Enhanced Account Details Modal */}
       <AccountDetailsModal />
 
       {/* Payment Modal */}
@@ -2385,7 +2790,13 @@ const AccountsPage = () => {
 
       {/* Payment History Modal */}
       <PaymentHistoryModal />
+
+      {/* Withdrawal History Modal */}
+      <WithdrawalHistoryModal />
+       <Footer/>
     </div>
+   
+    
   );
 };
 

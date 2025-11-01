@@ -260,19 +260,19 @@ const AdminDashboard = () => {
             <p className="text-gray-600 mt-2">Overview of your pigmy business</p>
           </div>
           <div className="flex gap-2">
-            <button
+            {/* <button
               onClick={debugToken}
               className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg transition-colors text-sm"
             >
               Debug Token
-            </button>
-            <button
+            </button> */}
+            {/* <button
               onClick={handleRefresh}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
-            </button>
+            </button> */}
           </div>
         </div>
 

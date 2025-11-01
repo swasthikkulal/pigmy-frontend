@@ -4,6 +4,7 @@ import {
   Plus,
   Search,
   Edit,
+  Trash2,
   User,
   Mail,
   Phone,
@@ -12,7 +13,9 @@ import {
   AlertCircle,
   RefreshCw,
   Key,
+  CreditCard,
 } from "lucide-react";
+import BankStatement from "./BankStatement";
 
 const ManageCustomers = () => {
   const [customers, setCustomers] = useState([]);
@@ -24,6 +27,12 @@ const ManageCustomers = () => {
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCollector, setFilterCollector] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [showBankStatement, setShowBankStatement] = useState(false);
 
   const [formData, setFormData] = useState({
     customerId: "",
@@ -49,15 +58,15 @@ const ManageCustomers = () => {
 
   // Function to validate token
   const validateToken = () => {
-    const token = localStorage.getItem('adminToken');
+    const token = localStorage.getItem("adminToken");
     return !!token;
   };
 
   // Function to handle logout
   const handleLogout = () => {
-    localStorage.removeItem('adminToken');
-    localStorage.removeItem('adminData');
-    window.location.href = '/login';
+    localStorage.removeItem("adminToken");
+    localStorage.removeItem("adminData");
+    window.location.href = "/login";
   };
 
   useEffect(() => {
@@ -71,58 +80,99 @@ const ManageCustomers = () => {
 
       // Validate token before making requests
       if (!validateToken()) {
-        setError('Please login as admin first.');
+        setError("Please login as admin first.");
         setLoading(false);
         return;
       }
 
-      const token = localStorage.getItem('adminToken');
+      const token = localStorage.getItem("adminToken");
 
       try {
         const [customersRes, collectorsRes] = await Promise.all([
           axios.get(`${API_BASE_URL}/customers`, {
             headers: { Authorization: `Bearer ${token}` },
-            timeout: 10000
+            timeout: 10000,
           }),
           axios.get(`${API_BASE_URL}/collectors`, {
             headers: { Authorization: `Bearer ${token}` },
-            timeout: 10000
-          })
+            timeout: 10000,
+          }),
         ]);
 
         setCustomers(customersRes?.data?.data || []);
         setCollectors(collectorsRes?.data?.data || []);
-
       } catch (apiError) {
-        let errorMessage = 'Failed to load data. ';
-        
-        if (apiError.code === 'NETWORK_ERROR' || apiError.code === 'ECONNREFUSED') {
-          errorMessage = 'Cannot connect to server. Please make sure the backend is running on localhost:5000';
+        let errorMessage = "Failed to load data. ";
+
+        if (
+          apiError.code === "NETWORK_ERROR" ||
+          apiError.code === "ECONNREFUSED"
+        ) {
+          errorMessage =
+            "Cannot connect to server. Please make sure the backend is running on localhost:5000";
         } else if (apiError.response?.status === 401) {
-          errorMessage = 'Authentication failed. Please login again.';
+          errorMessage = "Authentication failed. Please login again.";
           handleLogout();
         } else if (apiError.response?.status === 403) {
-          errorMessage = 'Access denied. Admin privileges required.';
+          errorMessage = "Access denied. Admin privileges required.";
         } else if (apiError.response?.status === 404) {
-          errorMessage = 'API endpoint not found. Please check the backend routes.';
-        } else if (apiError.message?.includes('timeout')) {
-          errorMessage = 'Request timeout. Server is taking too long to respond.';
+          errorMessage =
+            "API endpoint not found. Please check the backend routes.";
+        } else if (apiError.message?.includes("timeout")) {
+          errorMessage =
+            "Request timeout. Server is taking too long to respond.";
         } else {
-          errorMessage += 'Please check your connection and try again.';
+          errorMessage += "Please check your connection and try again.";
         }
 
         setError(errorMessage);
         setCustomers([]);
         setCollectors([]);
       }
-
     } catch (error) {
-      setError('An unexpected error occurred. Please try again.');
+      setError("An unexpected error occurred. Please try again.");
       setCustomers([]);
       setCollectors([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Delete customer function
+  const handleDeleteCustomer = async () => {
+    if (!customerToDelete) return;
+
+    setDeleting(true);
+    try {
+      const token = localStorage.getItem("adminToken");
+      await axios.delete(`${API_BASE_URL}/customers/${customerToDelete._id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      alert("Customer deleted successfully!");
+      setShowDeleteConfirm(false);
+      setCustomerToDelete(null);
+      fetchData(); // Refresh the list
+    } catch (error) {
+      if (error.response?.status === 401) {
+        alert("Session expired. Please login again.");
+        handleLogout();
+      } else {
+        alert(error.response?.data?.message || "Error deleting customer");
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Open delete confirmation modal
+  const openDeleteConfirm = (customer) => {
+    if (!validateToken()) {
+      alert("Please login first.");
+      return;
+    }
+    setCustomerToDelete(customer);
+    setShowDeleteConfirm(true);
   };
 
   const generateCustomerId = () => {
@@ -135,7 +185,7 @@ const ManageCustomers = () => {
     setSubmitting(true);
 
     if (!validateToken()) {
-      alert('Please login first.');
+      alert("Please login first.");
       setSubmitting(false);
       return;
     }
@@ -148,7 +198,7 @@ const ManageCustomers = () => {
     }
 
     try {
-      const token = localStorage.getItem('adminToken');
+      const token = localStorage.getItem("adminToken");
       const customerData = {
         ...formData,
         password: formData.customerId,
@@ -165,11 +215,9 @@ const ManageCustomers = () => {
         setEditingCustomer(null);
         resetForm();
       } else {
-        await axios.post(
-          `${API_BASE_URL}/customers`,
-          customerData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await axios.post(`${API_BASE_URL}/customers`, customerData, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         alert("Customer created successfully!");
 
         setCredentials({
@@ -184,7 +232,7 @@ const ManageCustomers = () => {
       fetchData();
     } catch (error) {
       if (error.response?.status === 401) {
-        alert('Session expired. Please login again.');
+        alert("Session expired. Please login again.");
         handleLogout();
       } else {
         alert(error.response?.data?.message || "Error saving customer.");
@@ -196,27 +244,31 @@ const ManageCustomers = () => {
 
   const handleResetPassword = async (customerId) => {
     if (!validateToken()) {
-      alert('Please login first.');
+      alert("Please login first.");
       return;
     }
 
-    if (!window.confirm(
-      "Reset password to Customer ID? This will allow the customer to login again using their Customer ID as password."
-    )) {
+    if (
+      !window.confirm(
+        "Reset password to Customer ID? This will allow the customer to login again using their Customer ID as password."
+      )
+    ) {
       return;
     }
 
     try {
-      const token = localStorage.getItem('adminToken');
+      const token = localStorage.getItem("adminToken");
       await axios.post(
         `${API_BASE_URL}/customers/${customerId}/reset-password`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert("Password reset successfully! Customer can now login using their Customer ID as password.");
+      alert(
+        "Password reset successfully! Customer can now login using their Customer ID as password."
+      );
     } catch (error) {
       if (error.response?.status === 401) {
-        alert('Session expired. Please login again.');
+        alert("Session expired. Please login again.");
         handleLogout();
       } else {
         alert(error.response?.data?.message || "Error resetting password");
@@ -269,7 +321,7 @@ const ManageCustomers = () => {
 
   const openCreateModal = () => {
     if (!validateToken()) {
-      alert('Please login first.');
+      alert("Please login first.");
       return;
     }
     resetForm();
@@ -279,7 +331,7 @@ const ManageCustomers = () => {
 
   const openEditModal = (customer) => {
     if (!validateToken()) {
-      alert('Please login first.');
+      alert("Please login first.");
       return;
     }
     setEditingCustomer(customer);
@@ -372,12 +424,12 @@ const ManageCustomers = () => {
             <span className="text-sm text-gray-500">
               {customers.length} customers, {collectors.length} collectors
             </span>
-            <button
+            {/* <button
               onClick={handleLogout}
               className="text-sm text-red-600 hover:text-red-700 px-3 py-1 border border-red-300 rounded-lg transition-colors"
             >
               Logout
-            </button>
+            </button> */}
             <button
               onClick={openCreateModal}
               className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
@@ -460,30 +512,36 @@ const ManageCustomers = () => {
                   </div>
                   <div className="flex items-start text-sm text-gray-600">
                     <MapPin className="h-4 w-4 mr-2 mt-0.5" />
-                    <span className="flex-1 text-sm">{customer.address}</span>
+                    <span className="flex text-sm">{customer.address}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                  <div>
-                    <p className="text-sm text-gray-600">Collector</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {customer.collectorId?.name || "Not assigned"}
-                    </p>
-                  </div>
-                  <div className="flex space-x-2">
+                  <div className="flex space-x-5">
                     <button
-                      onClick={() => handleResetPassword(customer._id)}
-                      className="text-yellow-600 hover:text-yellow-700 text-sm font-medium"
-                      title="Reset Password"
+                      onClick={() => {
+                        setSelectedCustomer(customer);
+                        setShowBankStatement(true);
+                      }}
+                      className="text-green-600 hover:text-green-700 text-sm font-medium pl-3.5"
+                      title="View Bank Statement"
                     >
-                      <Key className="h-4 w-4" />
+                      <CreditCard className="h-6 w-6" />
+                      <p>Statement</p>
                     </button>
                     <button
                       onClick={() => openEditModal(customer)}
-                      className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                      className="text-blue-600 hover:text-blue-700 text-sm font-medium pl-[9rem]"
+                      title="Edit Customer"
                     >
                       <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => openDeleteConfirm(customer)}
+                      className="text-red-600 hover:text-red-700 text-sm font-medium"
+                      title="Delete Customer"
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -529,8 +587,18 @@ const ManageCustomers = () => {
                     }}
                     className="text-gray-400 hover:text-gray-600"
                   >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-6 w-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -538,10 +606,14 @@ const ManageCustomers = () => {
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {/* Basic Personal Details */}
                   <div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Personal Details</h3>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      Basic Personal Details
+                    </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Customer ID *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Customer ID *
+                        </label>
                         <input
                           type="text"
                           required
@@ -549,27 +621,41 @@ const ManageCustomers = () => {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
                           readOnly
                         />
-                        <p className="text-xs text-gray-500 mt-1">This will be used as password for login</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          This will be used as password for login
+                        </p>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Full Name *
+                        </label>
                         <input
                           type="text"
                           required
                           value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({ ...formData, name: e.target.value })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           placeholder="Enter full name"
                         />
-                        {formErrors.name && <p className="text-red-500 text-xs mt-1">{formErrors.name}</p>}
+                        {formErrors.name && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {formErrors.name}
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Gender *
+                        </label>
                         <select
                           value={formData.gender}
-                          onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({ ...formData, gender: e.target.value })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         >
                           <option value="male">Male</option>
@@ -579,63 +665,110 @@ const ManageCustomers = () => {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Date of Birth *
+                        </label>
                         <input
                           type="date"
                           required
                           value={formData.dateOfBirth}
-                          onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              dateOfBirth: e.target.value,
+                            })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         />
-                        {formErrors.dateOfBirth && <p className="text-red-500 text-xs mt-1">{formErrors.dateOfBirth}</p>}
+                        {formErrors.dateOfBirth && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {formErrors.dateOfBirth}
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Phone Number *
+                        </label>
                         <input
                           type="tel"
                           required
                           value={formData.phone}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({ ...formData, phone: e.target.value })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           placeholder="10-digit mobile number"
                         />
-                        {formErrors.phone && <p className="text-red-500 text-xs mt-1">{formErrors.phone}</p>}
+                        {formErrors.phone && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {formErrors.phone}
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Email Address *
+                        </label>
                         <input
                           type="email"
                           required
                           value={formData.email}
-                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({ ...formData, email: e.target.value })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           placeholder="Email address for login"
                         />
-                        {formErrors.email && <p className="text-red-500 text-xs mt-1">{formErrors.email}</p>}
-                        <p className="text-xs text-gray-500 mt-1">This will be used as username for login</p>
+                        {formErrors.email && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {formErrors.email}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          This will be used as username for login
+                        </p>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Aadhaar Number *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Aadhaar Number *
+                        </label>
                         <input
                           type="text"
                           required
                           value={formData.aadhaarNumber}
-                          onChange={(e) => setFormData({ ...formData, aadhaarNumber: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              aadhaarNumber: e.target.value,
+                            })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           placeholder="12-digit Aadhaar"
                         />
-                        {formErrors.aadhaarNumber && <p className="text-red-500 text-xs mt-1">{formErrors.aadhaarNumber}</p>}
+                        {formErrors.aadhaarNumber && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {formErrors.aadhaarNumber}
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          PAN Number
+                        </label>
                         <input
                           type="text"
                           value={formData.panNumber}
-                          onChange={(e) => setFormData({ ...formData, panNumber: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              panNumber: e.target.value,
+                            })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           placeholder="PAN number (optional)"
                         />
@@ -643,67 +776,114 @@ const ManageCustomers = () => {
                     </div>
 
                     <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Address *
+                      </label>
                       <textarea
                         required
                         value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, address: e.target.value })
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         placeholder="Full residential address"
                         rows="3"
                       />
-                      {formErrors.address && <p className="text-red-500 text-xs mt-1">{formErrors.address}</p>}
+                      {formErrors.address && (
+                        <p className="text-red-500 text-xs mt-1">
+                          {formErrors.address}
+                        </p>
+                      )}
                     </div>
                   </div>
 
                   {/* Nominee Details */}
                   <div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-4">Nominee Details</h3>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      Nominee Details
+                    </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nominee Name *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Nominee Name *
+                        </label>
                         <input
                           type="text"
                           required
                           value={formData.nomineeName}
-                          onChange={(e) => setFormData({ ...formData, nomineeName: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              nomineeName: e.target.value,
+                            })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           placeholder="Nominee full name"
                         />
-                        {formErrors.nomineeName && <p className="text-red-500 text-xs mt-1">{formErrors.nomineeName}</p>}
+                        {formErrors.nomineeName && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {formErrors.nomineeName}
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Relation with Nominee *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Relation with Nominee *
+                        </label>
                         <input
                           type="text"
                           required
                           value={formData.nomineeRelation}
-                          onChange={(e) => setFormData({ ...formData, nomineeRelation: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              nomineeRelation: e.target.value,
+                            })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           placeholder="e.g., Spouse, Son, Daughter"
                         />
-                        {formErrors.nomineeRelation && <p className="text-red-500 text-xs mt-1">{formErrors.nomineeRelation}</p>}
+                        {formErrors.nomineeRelation && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {formErrors.nomineeRelation}
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nominee Contact *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Nominee Contact *
+                        </label>
                         <input
                           type="text"
                           required
                           value={formData.nomineeContact}
-                          onChange={(e) => setFormData({ ...formData, nomineeContact: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              nomineeContact: e.target.value,
+                            })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           placeholder="Phone number"
                         />
-                        {formErrors.nomineeContact && <p className="text-red-500 text-xs mt-1">{formErrors.nomineeContact}</p>}
+                        {formErrors.nomineeContact && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {formErrors.nomineeContact}
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Status *
+                        </label>
                         <select
                           value={formData.status}
-                          onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({ ...formData, status: e.target.value })
+                          }
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         >
                           <option value="active">Active</option>
@@ -731,10 +911,92 @@ const ManageCustomers = () => {
                       disabled={submitting}
                       className="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
                     >
-                      {submitting ? "Saving..." : editingCustomer ? "Update" : "Create"}
+                      {submitting
+                        ? "Saving..."
+                        : editingCustomer
+                        ? "Update"
+                        : "Create"}
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && customerToDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-red-600">
+                    Confirm Delete
+                  </h3>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg
+                      className="h-6 w-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center mb-2">
+                    <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+                    <span className="font-medium text-red-800">
+                      Warning: This action cannot be undone!
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-red-700">
+                    Are you sure you want to delete customer{" "}
+                    <strong>{customerToDelete.name}</strong> (ID:{" "}
+                    {customerToDelete.customerId})? This will permanently remove
+                    all customer data including their transactions and account
+                    information.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+                    disabled={deleting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteCustomer}
+                    disabled={deleting}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 flex items-center"
+                  >
+                    {deleting ? (
+                      <>
+                        <Loader className="h-4 w-4 animate-spin mr-2" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete Customer
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -746,13 +1008,25 @@ const ManageCustomers = () => {
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Customer Login Credentials</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Customer Login Credentials
+                  </h3>
                   <button
                     onClick={() => setShowCredentials(false)}
                     className="text-gray-400 hover:text-gray-600"
                   >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-6 w-6"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -760,19 +1034,25 @@ const ManageCustomers = () => {
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
                   <div className="flex items-center mb-2">
                     <Key className="h-5 w-5 text-yellow-600 mr-2" />
-                    <span className="font-medium text-yellow-800">Share these credentials with the customer:</span>
+                    <span className="font-medium text-yellow-800">
+                      Share these credentials with the customer:
+                    </span>
                   </div>
 
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Email (Username)</label>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Email (Username)
+                      </label>
                       <div className="mt-1 p-2 bg-white border border-gray-300 rounded-lg font-mono text-sm">
                         {credentials.email}
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Password</label>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Password
+                      </label>
                       <div className="mt-1 p-2 bg-white border border-gray-300 rounded-lg font-mono text-sm">
                         {credentials.customerId}
                       </div>
@@ -780,7 +1060,8 @@ const ManageCustomers = () => {
                   </div>
 
                   <p className="text-xs text-yellow-700 mt-3">
-                    💡 The customer should use their Customer ID as password when logging in.
+                    💡 The customer should use their Customer ID as password
+                    when logging in.
                   </p>
                 </div>
 
@@ -793,6 +1074,17 @@ const ManageCustomers = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Bank Statement Modal */}
+        {showBankStatement && selectedCustomer && (
+          <BankStatement
+            customer={selectedCustomer}
+            onClose={() => {
+              setShowBankStatement(false);
+              setSelectedCustomer(null);
+            }}
+          />
         )}
       </div>
     </div>

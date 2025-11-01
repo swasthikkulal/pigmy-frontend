@@ -33,6 +33,10 @@ import CollectorDashboard from "./collectorcomponents/CollectorDashboard";
 import CollectorProfile from "./collectorcomponents/CollectorProfile";
 import CollectorCustomers from "./collectorcomponents/CollectorCustomers";
 import CollectorCollections from "./collectorcomponents/CollectorCollections";
+import CollectorWithdrawals from "./collectorcomponents/CollectorWithdrawals";
+import AdminCollectorFeedback from "./admincomponents/AdminCollectorFeedback";
+import BankStatement from "./admincomponents/BankStatement";
+import PigmyLandingPage from "./components/PigmyLandingPage";
 
 function App() {
   const [count, setCount] = useState(0);
@@ -42,7 +46,8 @@ function App() {
       <BrowserRouter>
         <Routes>
           {/* Public Routes */}
-          <Route path="/" element={<PigmyXpressDashboard />} />
+           <Route path="/" element={<PigmyLandingPage />} />
+          <Route path="/pigmy" element={<PigmyXpressDashboard />} />
           <Route path="/paymentpage" element={<PaymentPage />} />
           <Route path="/accountspage" element={<AccountsPage />} />
           <Route path="/withdrawal" element={<Withdrawal />} />
@@ -81,6 +86,8 @@ function App() {
             <Route path="plans" element={<ManagePlans />} />
             <Route path="reports" element={<Reports />} />
             <Route path="feedback" element={<AdminFeedback />} />
+            <Route path="collector/feedback" element={<AdminCollectorFeedback />} />
+            <Route path="statement" element={<BankStatement />} />
           </Route>
 
           {/* ✅ FIXED: Remove the conflicting /admin redirect route */}
@@ -98,6 +105,7 @@ function App() {
           <Route path="/collector/profile" element={<CollectorProfile />} />
           <Route path="/collector/customers" element={<CollectorCustomers />} />
           <Route path="/collector/collections" element={<CollectorCollections />} />
+          <Route path="/collector/withdrawals" element={<CollectorWithdrawals />} />
         </Routes>
       </BrowserRouter>
     </>

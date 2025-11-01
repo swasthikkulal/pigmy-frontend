@@ -393,7 +393,8 @@ const ManagePlans = () => {
                   </button>
                 </div>
 
-                <select
+                <select hidden
+                
                   value={plan.status}
                   onChange={(e) => handleStatusUpdate(plan._id, e.target.value)}
                   className="text-xs border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"

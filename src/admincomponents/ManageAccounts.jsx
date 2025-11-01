@@ -19,6 +19,7 @@ import {
   User,
   FileText,
   X,
+  Trash2,
 } from "lucide-react";
 import {
   getAccounts,
@@ -36,6 +37,7 @@ const ManageAccounts = () => {
   const [collectors, setCollectors] = useState([]);
   const [plans, setPlans] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [accountPayments, setAccountPayments] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -43,6 +45,7 @@ const ManageAccounts = () => {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(null);
 
   const [formData, setFormData] = useState({
     accountNumber: "",
@@ -98,11 +101,9 @@ const ManageAccounts = () => {
   const getPlanTypeFromAccount = (account) => {
     if (!account) return "monthly";
 
-    // Use accountType from your schema
     if (account.accountType) return account.accountType;
     if (account.planId?.type) return account.planId.type;
 
-    // Check plan name for keywords
     const planName =
       account.planId?.name?.toLowerCase() ||
       account.planName?.toLowerCase() ||
@@ -111,7 +112,6 @@ const ManageAccounts = () => {
     if (planName.includes("daily")) return "daily";
     if (planName.includes("monthly")) return "monthly";
 
-    // Default fallback
     return "monthly";
   };
 
@@ -149,7 +149,7 @@ const ManageAccounts = () => {
       case "monthly":
         return durationValue * 30;
       default:
-        return durationValue * 30; // Default to monthly
+        return durationValue * 30;
     }
   };
 
@@ -179,6 +179,28 @@ const ManageAccounts = () => {
     return `ACC${timestamp}`;
   };
 
+  // Status badge function
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      active: { color: "bg-green-100 text-green-800", icon: CheckCircle },
+      completed: { color: "bg-blue-100 text-blue-800", icon: CheckCircle },
+      closed: { color: "bg-gray-100 text-gray-800", icon: XCircle },
+      pending: { color: "bg-yellow-100 text-yellow-800", icon: Clock },
+    };
+
+    const config = statusConfig[status] || statusConfig.pending;
+    const IconComponent = config.icon;
+
+    return (
+      <span
+        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}
+      >
+        <IconComponent className="w-3 h-3 mr-1" />
+        {status?.charAt(0)?.toUpperCase() + status?.slice(1) || "Unknown"}
+      </span>
+    );
+  };
+
   // Initialize account number when modal opens
   useEffect(() => {
     if (showModal) {
@@ -189,6 +211,41 @@ const ManageAccounts = () => {
     }
   }, [showModal]);
 
+  // Function to fetch payments for a specific account
+  const fetchAccountPayments = async (accountId) => {
+    try {
+      const token = localStorage.getItem("adminToken");
+      const response = await axios.get(
+        `http://localhost:5000/api/payments/account/${accountId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      
+      if (response.data.success) {
+        return response.data.data;
+      }
+      return [];
+    } catch (error) {
+      console.error(`Error fetching payments for account ${accountId}:`, error);
+      return [];
+    }
+  };
+
+  // Function to fetch all account payments
+  const fetchAllAccountPayments = async (accountList) => {
+    const paymentsMap = {};
+    
+    for (const account of accountList) {
+      const payments = await fetchAccountPayments(account._id);
+      paymentsMap[account._id] = payments;
+    }
+    
+    return paymentsMap;
+  };
+
   const getAccountStats = (account) => {
     if (!account) {
       return {
@@ -198,22 +255,24 @@ const ManageAccounts = () => {
         totalInterest: 0,
         maturityAmount: 0,
         nextDueDate: null,
+        transactionsCount: 0,
       };
     }
 
-    const accountTransactions = transactions.filter(
-      (transaction) =>
-        transaction.accountId === account._id ||
-        transaction.accountId === account.accountId
-    );
+    // Use account's own transactions if available
+    const accountTransactions = account.transactions || [];
+    const accountPaymentsData = accountPayments[account._id] || [];
 
-    const depositTransactions = accountTransactions.filter(
-      (t) => t.type === "deposit"
-    );
-    const totalDeposits = depositTransactions.reduce(
-      (sum, t) => sum + (t.amount || 0),
-      0
-    );
+    // Combine both transactions and payments
+    const allDeposits = [
+      ...accountTransactions.filter(t => t.type === 'deposit'),
+      ...accountPaymentsData.filter(p => p.status === 'completed' || p.status === 'verified')
+    ];
+
+    // Calculate total deposits
+    const totalDeposits = allDeposits.reduce((sum, deposit) => {
+      return sum + (deposit.amount || 0);
+    }, 0);
 
     // Calculate missed deposits based on plan type
     const startDate = new Date(account.startDate);
@@ -223,20 +282,15 @@ const ManageAccounts = () => {
     let expectedDeposits = 0;
     switch (planType.toLowerCase()) {
       case "daily":
-        const daysPassed = Math.floor(
-          (today - startDate) / (1000 * 60 * 60 * 24)
-        );
+        const daysPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
         expectedDeposits = Math.max(0, daysPassed);
         break;
       case "weekly":
-        const weeksPassed = Math.floor(
-          (today - startDate) / (1000 * 60 * 60 * 24 * 7)
-        );
+        const weeksPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24 * 7));
         expectedDeposits = Math.max(0, weeksPassed);
         break;
       case "monthly":
-        const monthsPassed =
-          (today.getFullYear() - startDate.getFullYear()) * 12 +
+        const monthsPassed = (today.getFullYear() - startDate.getFullYear()) * 12 +
           (today.getMonth() - startDate.getMonth());
         expectedDeposits = Math.max(0, monthsPassed);
         break;
@@ -244,16 +298,16 @@ const ManageAccounts = () => {
         expectedDeposits = 0;
     }
 
-    const missedDeposits = Math.max(
-      0,
-      expectedDeposits - depositTransactions.length
-    );
+    const missedDeposits = Math.max(0, expectedDeposits - allDeposits.length);
 
     // Calculate next due date
-    const lastDeposit = depositTransactions[0];
+    const lastDeposit = allDeposits[allDeposits.length - 1];
     let nextDueDate = new Date();
-    if (lastDeposit?.date) {
-      nextDueDate = new Date(lastDeposit.date);
+    
+    if (lastDeposit?.date || lastDeposit?.paymentDate) {
+      const lastDepositDate = new Date(lastDeposit.date || lastDeposit.paymentDate);
+      nextDueDate = new Date(lastDepositDate);
+      
       switch (planType.toLowerCase()) {
         case "daily":
           nextDueDate.setDate(nextDueDate.getDate() + 1);
@@ -265,25 +319,123 @@ const ManageAccounts = () => {
           nextDueDate.setMonth(nextDueDate.getMonth() + 1);
           break;
       }
+    } else {
+      nextDueDate = new Date(startDate);
     }
 
-    const totalInterest = (
-      ((totalDeposits * (account.interestRate || 0)) / 100) *
-      (parseInt(account.duration) / 12)
-    ).toFixed(2);
-
-    const maturityAmount = totalDeposits + parseFloat(totalInterest);
+    // Calculate interest and maturity amount
+    const interestRate = account.interestRate || account.planId?.interestRate || 6.5;
+    const totalInterest = ((totalDeposits * interestRate) / 100) * (parseInt(account.duration) / 12);
+    const maturityAmount = totalDeposits + totalInterest;
 
     return {
       totalDeposits,
       missedDeposits,
-      lastDepositDate: lastDeposit?.date || null,
+      lastDepositDate: lastDeposit ? (lastDeposit.date || lastDeposit.paymentDate) : null,
       nextDueDate: nextDueDate.toISOString().split("T")[0],
-      totalInterest: parseFloat(totalInterest),
-      maturityAmount,
+      totalInterest: parseFloat(totalInterest.toFixed(2)),
+      maturityAmount: parseFloat(maturityAmount.toFixed(2)),
       maturityDate: account.maturityDate,
       maturityStatus: account.maturityStatus || "Pending",
+      transactionsCount: allDeposits.length,
     };
+  };
+
+  // Delete account function
+  const handleDeleteAccount = async (accountId) => {
+    const account = accounts.find(acc => acc._id === accountId);
+    const stats = getAccountStats(account);
+    
+    if (stats.transactionsCount > 0 || stats.totalDeposits > 0) {
+      const shouldForceDelete = window.confirm(
+        `This account has ${stats.transactionsCount} transactions and total deposits of ₹${stats.totalDeposits}. ` +
+        `Are you sure you want to FORCE DELETE? This action cannot be undone and will permanently remove all transaction history.`
+      );
+      
+      if (!shouldForceDelete) {
+        const closeInstead = window.confirm(
+          "Would you like to close this account instead? This will preserve transaction history."
+        );
+        
+        if (closeInstead) {
+          await handleCloseAccount(accountId);
+        }
+        return;
+      }
+    } else {
+      if (!window.confirm("Are you sure you want to delete this account?")) {
+        return;
+      }
+    }
+
+    setDeleteLoading(accountId);
+    
+    try {
+      const token = localStorage.getItem("adminToken");
+      const response = await axios.delete(
+        `http://localhost:5000/api/accounts/${accountId}?force=true`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      
+      if (response.data.success) {
+        setAccounts(prevAccounts => 
+          prevAccounts.filter(account => account._id !== accountId)
+        );
+        alert(response.data.message);
+      }
+    } catch (error) {
+      console.error("Error deleting account:", error);
+      alert(error.response?.data?.message || "Failed to delete account.");
+    } finally {
+      setDeleteLoading(null);
+    }
+  };
+
+  // Close account function
+  const handleCloseAccount = async (accountId) => {
+    setDeleteLoading(accountId);
+    
+    try {
+      const token = localStorage.getItem("adminToken");
+      const response = await axios.patch(
+        `http://localhost:5000/api/accounts/${accountId}/status`,
+        { status: 'closed' },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      
+      if (response.data.success) {
+        setAccounts(prevAccounts => 
+          prevAccounts.map(account => 
+            account._id === accountId 
+              ? { ...account, status: 'closed' }
+              : account
+          )
+        );
+        alert("Account closed successfully!");
+      } else {
+        alert(response.data.message || "Failed to close account.");
+      }
+    } catch (error) {
+      console.error("Error closing account:", error);
+      alert("Failed to close account. Please try again.");
+    } finally {
+      setDeleteLoading(null);
+    }
+  };
+
+  // Handle view details - FIXED FUNCTION
+  const handleViewDetails = (account) => {
+    console.log("View details clicked for account:", account);
+    setSelectedAccount(account);
+    setShowDetailModal(true);
   };
 
   useEffect(() => {
@@ -295,12 +447,10 @@ const ManageAccounts = () => {
       setLoading(true);
       setError(null);
 
-      // Enhanced mock data with account types
       const mockAccounts = [
         {
           _id: "1",
           accountNumber: "ACC001",
-          accountId: "ACC001",
           customerId: {
             _id: "cust1",
             name: "Raj Swasthik",
@@ -333,173 +483,27 @@ const ManageAccounts = () => {
           maturityDate: "2026-10-22",
           status: "active",
           maturityStatus: "Pending",
-          createdBy: "Admin01",
-          createdAt: "2025-10-22",
-          updatedBy: "Collector02",
-          updatedAt: "2025-10-25",
-          remarks: "Transferred from old plan",
-        },
-        {
-          _id: "2",
-          accountNumber: "ACC002",
-          accountId: "ACC002",
-          customerId: {
-            _id: "cust2",
-            name: "Priya Sharma",
-            phone: "9876543211",
-            email: "priya@example.com",
-            address: "Mumbai, Maharashtra",
-            nomineeName: "Rahul Sharma",
-            customerId: "CUST002",
-          },
-          collectorId: {
-            _id: "col2",
-            name: "Suresh Patel",
-            area: "Mumbai Central",
-            collectorId: "COL003",
-          },
-          planId: {
-            _id: "plan2",
-            name: "Weekly Saver Plan",
-            amount: 500,
-            interestRate: 6.5,
-            duration: "4",
-            type: "weekly",
-          },
-          accountType: "weekly",
-          dailyAmount: 500,
-          startDate: "2025-02-01",
-          duration: "4",
-          interestRate: 6.5,
-          totalDays: 28,
-          maturityDate: "2025-03-01",
-          status: "completed",
-          maturityStatus: "Paid",
-          withdrawalDate: "2025-03-02",
-          paymentMode: "Bank Transfer",
-          paymentReference: "TXN2025A123",
-          createdBy: "Admin01",
-          createdAt: "2025-02-01",
-          updatedBy: "Admin01",
-          updatedAt: "2025-03-02",
-          remarks: "Regular customer",
-        },
-        {
-          _id: "3",
-          accountNumber: "ACC003",
-          accountId: "ACC003",
-          customerId: {
-            _id: "cust3",
-            name: "Amit Kumar",
-            phone: "9876543212",
-            email: "amit@example.com",
-            address: "Delhi",
-            nomineeName: "Neha Kumar",
-            customerId: "CUST003",
-          },
-          collectorId: {
-            _id: "col1",
-            name: "Ramesh Kumar",
-            area: "Bangalore South",
-            collectorId: "COL002",
-          },
-          planId: {
-            _id: "plan3",
-            name: "Daily Deposits",
-            amount: 50,
-            interestRate: 5.0,
-            duration: "30",
-            type: "daily",
-          },
-          accountType: "daily",
-          dailyAmount: 50,
-          startDate: "2025-01-01",
-          duration: "30",
-          interestRate: 5.0,
-          totalDays: 30,
-          maturityDate: "2025-01-31",
-          status: "active",
-          maturityStatus: "Pending",
-        },
-      ];
-
-      const mockCustomers = [
-        {
-          _id: "cust1",
-          name: "Raj Swasthik",
-          phone: "9483369031",
-          email: "swasthik126@gmail.com",
-          address: "Mangalore, Karnataka",
-          nomineeName: "Ravi Swasthik",
-          customerId: "CUST001",
-        },
-        {
-          _id: "cust2",
-          name: "Priya Sharma",
-          phone: "9876543211",
-          email: "priya@example.com",
-          address: "Mumbai, Maharashtra",
-          nomineeName: "Rahul Sharma",
-          customerId: "CUST002",
-        },
-      ];
-
-      const mockCollectors = [
-        {
-          _id: "col1",
-          name: "Ramesh Kumar",
-          area: "Bangalore South",
-          collectorId: "COL002",
-        },
-        {
-          _id: "col2",
-          name: "Suresh Patel",
-          area: "Mumbai Central",
-          collectorId: "COL003",
-        },
-      ];
-
-      const mockPlans = [
-        {
-          _id: "plan1",
-          name: "Gold Grower",
-          amount: 100,
-          interestRate: 7.0,
-          duration: "12",
-          type: "monthly",
-        },
-        {
-          _id: "plan2",
-          name: "Weekly Saver Plan",
-          amount: 500,
-          interestRate: 6.5,
-          duration: "4",
-          type: "weekly",
-        },
-        {
-          _id: "plan3",
-          name: "Daily Deposits",
-          amount: 50,
-          interestRate: 5.0,
-          duration: "30",
-          type: "daily",
-        },
-        {
-          _id: "plan4",
-          name: "Ruby Plan",
-          amount: 200,
-          interestRate: 10.0,
-          duration: "12",
-          type: "monthly",
+          transactions: [
+            {
+              amount: 100,
+              type: "deposit",
+              date: "2025-10-23",
+              collectedBy: "col1"
+            },
+            {
+              amount: 100,
+              type: "deposit",
+              date: "2025-10-24",
+              collectedBy: "col1"
+            }
+          ]
         },
       ];
 
       try {
-        // Use axios.get directly for customers with better error handling
-        let customersData = mockCustomers;
+        let customersData = [];
         try {
           const token = localStorage.getItem("adminToken");
-          console.log(token,"sdfvgbhnjmvbn")
           const customersResponse = await axios.get(
             "http://localhost:5000/api/customers",
             {
@@ -508,54 +512,36 @@ const ManageAccounts = () => {
               },
             }
           );
-          console.log(
-            "Customers API Response:",
-            customersResponse.data.data,
-            "abcd"
-          );
 
-          // Handle different response structures
-          if (customersResponse.data && customersResponse.data) {
+          if (customersResponse.data && customersResponse.data.data) {
             customersData = customersResponse.data.data;
-          } else if (
-            customersResponse.data &&
-            Array.isArray(customersResponse.data)
-          ) {
+          } else if (Array.isArray(customersResponse.data)) {
             customersData = customersResponse.data;
-          } else if (
-            customersResponse.data &&
-            customersResponse.data.customers
-          ) {
-            customersData = customersResponse.data.customers;
           }
-
-          console.log("Processed customers data:", customersData);
         } catch (customerError) {
           console.error("Error fetching customers:", customerError);
-          console.log("Using mock customers data");
         }
 
         setCustomers(customersData);
 
-        // Use existing API functions for other endpoints
-        const [accountsRes, collectorsRes, plansRes, transactionsRes] =
-          await Promise.all([
-            getAccounts().catch(() => ({ data: { data: mockAccounts } })),
-            getCollectors().catch(() => ({ data: { data: mockCollectors } })),
-            getPlans().catch(() => ({ data: { data: mockPlans } })),
-            getTransactions().catch(() => ({ data: { data: [] } })),
-          ]);
+        const [accountsRes, collectorsRes, plansRes] = await Promise.all([
+          getAccounts().catch(() => ({ data: { data: mockAccounts } })),
+          getCollectors().catch(() => ({ data: { data: [] } })),
+          getPlans().catch(() => ({ data: { data: [] } })),
+        ]);
 
-        setAccounts(accountsRes?.data?.data || mockAccounts);
-        setCollectors(collectorsRes?.data?.data || mockCollectors);
-        setPlans(plansRes?.data?.data || mockPlans);
-        setTransactions(transactionsRes?.data?.data || []);
+        const accountsData = accountsRes?.data?.data || mockAccounts;
+        setAccounts(accountsData);
+        setCollectors(collectorsRes?.data?.data || []);
+        setPlans(plansRes?.data?.data || []);
+
+        // Fetch payments for all accounts
+        const paymentsData = await fetchAllAccountPayments(accountsData);
+        setAccountPayments(paymentsData);
+
       } catch (error) {
         console.error("Error in API calls:", error);
         setAccounts(mockAccounts);
-        setCollectors(mockCollectors);
-        setPlans(mockPlans);
-        setTransactions([]);
       }
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -565,147 +551,54 @@ const ManageAccounts = () => {
     }
   };
 
-  // const handleSubmit = async (e) => {
-  //   e.preventDefault();
-  //   setSubmitLoading(true);
-
-  //   try {
-  //     const selectedPlan = plans.find((plan) => plan._id === formData.planId);
-  //     const selectedCustomer = customers.find(
-  //       (cust) => cust._id === formData.customerId
-  //     );
-  //     const selectedCollector = collectors.find(
-  //       (col) => col._id === formData.collectorId
-  //     );
-
-  //     // Use accountType from form data
-  //     const accountType =
-  //       formData.accountType || getPlanTypeFromPlan(selectedPlan) || "monthly";
-  //     const duration = selectedPlan?.duration || formData.duration;
-
-  //     // Prepare data for backend - use accountType to match your schema
-  //     const accountData = {
-  //       accountNumber: formData.accountNumber,
-  //       accountId: formData.accountNumber,
-  //       customerId: formData.customerId,
-  //       collectorId: formData.collectorId,
-  //       planId: formData.planId,
-  //       accountType: accountType,
-  //       dailyAmount: parseFloat(formData.dailyAmount),
-  //       startDate: formData.startDate,
-  //       duration: duration,
-  //       status: formData.status,
-  //       remarks: formData.remarks,
-  //       interestRate: selectedPlan?.interestRate || 6.5,
-  //       totalDays: calculateTotalDays(duration, accountType),
-  //       maturityDate: calculateMaturityDate(
-  //         formData.startDate,
-  //         duration,
-  //         accountType
-  //       ),
-  //       customerName: selectedCustomer?.name,
-  //       planName: selectedPlan?.name,
-  //       collectorName: selectedCollector?.name,
-  //       maturityStatus: "Pending",
-  //       createdBy: "Admin",
-  //       createdAt: new Date().toISOString(),
-  //     };
-
-  //     console.log("Sending account data:", accountData);
-
-  //     const response = await createAccount(accountData);
-
-  //     if (response.data.success) {
-  //       alert("Account created successfully!");
-  //       setShowModal(false);
-  //       resetForm();
-  //       fetchData();
-  //     } else {
-  //       alert(`Failed to create account: ${response.data.message}`);
-  //     }
-  //   } catch (error) {
-  //     console.error("Error creating account:", error);
-
-  //     if (error.response) {
-  //       const errorMessage =
-  //         error.response.data.message || error.response.data.error;
-  //       alert(`Error creating account: ${errorMessage}`);
-
-  //       if (error.response.data.errors) {
-  //         console.error("Validation errors:", error.response.data.errors);
-  //       }
-  //     } else {
-  //       alert("Account created successfully with demo data!");
-  //       setShowModal(false);
-  //       fetchData();
-  //     }
-  //   } finally {
-  //     setSubmitLoading(false);
-  //   }
-  // };
-
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setSubmitLoading(true);
+    e.preventDefault();
+    setSubmitLoading(true);
 
-  try {
-    const selectedPlan = plans.find((plan) => plan._id === formData.planId);
-    const selectedCustomer = customers.find(
-      (cust) => cust._id === formData.customerId
-    );
-    const selectedCollector = collectors.find(
-      (col) => col._id === formData.collectorId
-    );
+    try {
+      const selectedPlan = plans.find((plan) => plan._id === formData.planId);
+      const accountType = formData.accountType || getPlanTypeFromPlan(selectedPlan) || "monthly";
+      const duration = selectedPlan?.duration || formData.duration;
 
-    // Use accountType from form data
-    const accountType =
-      formData.accountType || getPlanTypeFromPlan(selectedPlan) || "monthly";
-    const duration = selectedPlan?.duration || formData.duration;
+      const accountData = {
+        accountNumber: formData.accountNumber,
+        customerId: formData.customerId,
+        collectorId: formData.collectorId,
+        planId: formData.planId,
+        accountType: accountType,
+        dailyAmount: parseFloat(formData.dailyAmount),
+        startDate: formData.startDate,
+        duration: duration,
+        status: formData.status,
+        remarks: formData.remarks || "",
+      };
 
-    // ✅ ONLY send the essential form data (no calculated fields, no accountId)
-    const accountData = {
-      accountNumber: formData.accountNumber,
-      customerId: formData.customerId,
-      collectorId: formData.collectorId,
-      planId: formData.planId,
-      accountType: accountType,
-      dailyAmount: parseFloat(formData.dailyAmount),
-      startDate: formData.startDate,
-      duration: duration,
-      status: formData.status,
-      remarks: formData.remarks || "",
-    };
+      console.log("Sending minimal account data:", accountData);
 
-    console.log("Sending minimal account data:", accountData);
+      const response = await createAccount(accountData);
 
-    const response = await createAccount(accountData);
-
-    if (response.data.success) {
-      alert("Account created successfully!");
-      setShowModal(false);
-      resetForm();
-      fetchData();
-    } else {
-      alert(`Failed to create account: ${response.data.message}`);
-    }
-  } catch (error) {
-    console.error("Error creating account:", error);
-    
-    if (error.response) {
-      const errorMessage = error.response.data.message || error.response.data.error;
-      alert(`Error creating account: ${errorMessage}`);
-      
-      // If it's still the index error, run the fix script
-      if (errorMessage.includes('accountId_1')) {
-        alert('Please run the database fix script: node fixIndex.js');
+      if (response.data.success) {
+        alert("Account created successfully!");
+        setShowModal(false);
+        resetForm();
+        fetchData();
+      } else {
+        alert(`Failed to create account: ${response.data.message}`);
       }
-    } else {
-      alert("Network error. Please try again.");
+    } catch (error) {
+      console.error("Error creating account:", error);
+      
+      if (error.response) {
+        const errorMessage = error.response.data.message || error.response.data.error;
+        alert(`Error creating account: ${errorMessage}`);
+      } else {
+        alert("Network error. Please try again.");
+      }
+    } finally {
+      setSubmitLoading(false);
     }
-  } finally {
-    setSubmitLoading(false);
-  }
-};
+  };
+
   const resetForm = () => {
     setFormData({
       accountNumber: generateAccountNumber(),
@@ -719,32 +612,6 @@ const ManageAccounts = () => {
       status: "active",
       remarks: "",
     });
-  };
-
-  const handleViewDetails = (account) => {
-    setSelectedAccount(account);
-    setShowDetailModal(true);
-  };
-
-  const getStatusBadge = (status) => {
-    const statusConfig = {
-      active: { color: "bg-green-100 text-green-800", icon: CheckCircle },
-      completed: { color: "bg-blue-100 text-blue-800", icon: CheckCircle },
-      closed: { color: "bg-gray-100 text-gray-800", icon: XCircle },
-      pending: { color: "bg-yellow-100 text-yellow-800", icon: Clock },
-    };
-
-    const config = statusConfig[status] || statusConfig.pending;
-    const IconComponent = config.icon;
-
-    return (
-      <span
-        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}
-      >
-        <IconComponent className="w-3 h-3 mr-1" />
-        {status?.charAt(0)?.toUpperCase() + status?.slice(1) || "Unknown"}
-      </span>
-    );
   };
 
   const filteredAccounts = accounts.filter((account) => {
@@ -775,12 +642,9 @@ const ManageAccounts = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Manage Accounts
-            </h1>
+            <h1 className="text-3xl font-bold text-gray-900">Manage Accounts</h1>
             <p className="text-gray-600 mt-2">
-              {error ? "Using demo data - " : ""}Create and manage pigmy savings
-              accounts
+              {error ? "Using demo data - " : ""}Create and manage pigmy savings accounts
             </p>
             {error && <p className="text-yellow-600 text-sm mt-1">{error}</p>}
           </div>
@@ -801,12 +665,8 @@ const ManageAccounts = () => {
                 <PiggyBank className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-600">
-                  Total Accounts
-                </p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {accounts.length}
-                </p>
+                <p className="text-sm font-medium text-gray-600">Total Accounts</p>
+                <p className="text-2xl font-bold text-gray-900">{accounts.length}</p>
               </div>
             </div>
           </div>
@@ -817,9 +677,7 @@ const ManageAccounts = () => {
                 <TrendingUp className="h-6 w-6 text-green-600" />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-600">
-                  Active Accounts
-                </p>
+                <p className="text-sm font-medium text-gray-600">Active Accounts</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {accounts.filter((a) => a.status === "active").length}
                 </p>
@@ -827,19 +685,19 @@ const ManageAccounts = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadowSm border border-gray-200 p-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center">
               <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mr-4">
                 <DollarSign className="h-6 w-6 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Daily</p>
+                <p className="text-sm font-medium text-gray-600">Total Deposits</p>
                 <p className="text-2xl font-bold text-gray-900">
                   ₹
-                  {accounts.reduce(
-                    (sum, account) => sum + (account.dailyAmount || 0),
-                    0
-                  )}
+                  {accounts.reduce((sum, account) => {
+                    const stats = getAccountStats(account);
+                    return sum + stats.totalDeposits;
+                  }, 0)}
                 </p>
               </div>
             </div>
@@ -852,9 +710,7 @@ const ManageAccounts = () => {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-600">Collectors</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {collectors.length}
-                </p>
+                <p className="text-2xl font-bold text-gray-900">{collectors.length}</p>
               </div>
             </div>
           </div>
@@ -912,12 +768,10 @@ const ManageAccounts = () => {
                           {account.accountNumber || account.accountId}
                         </div>
                         <div className="text-sm text-gray-500">
-                          Start:{" "}
-                          {new Date(account.startDate).toLocaleDateString()}
+                          Start: {new Date(account.startDate).toLocaleDateString()}
                         </div>
                         <div className="text-xs text-gray-400">
-                          Matures:{" "}
-                          {new Date(stats.maturityDate).toLocaleDateString()}
+                          Matures: {new Date(stats.maturityDate).toLocaleDateString()}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -951,8 +805,7 @@ const ManageAccounts = () => {
                           ₹{account.dailyAmount}/{amountLabel}
                         </div>
                         <div className="text-xs text-gray-400">
-                          {account.interestRate}% •{" "}
-                          {getDurationDisplayFromAccount(account)}
+                          {account.interestRate}% • {getDurationDisplayFromAccount(account)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -960,18 +813,35 @@ const ManageAccounts = () => {
                         <div className="text-xs text-gray-500 mt-1">
                           Deposits: ₹{stats.totalDeposits}
                         </div>
+                        {stats.transactionsCount > 0 && (
+                          <div className="text-xs text-blue-500 mt-1">
+                            {stats.transactionsCount} payments
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
                           <button
                             onClick={() => handleViewDetails(account)}
-                            className="text-blue-600 hover:text-blue-900 p-1 rounded"
+                            className="text-blue-600 hover:text-blue-900 p-1 rounded transition-colors"
                             title="View Details"
                           >
                             <Eye className="h-4 w-4" />
                           </button>
-                          <button className="text-green-600 hover:text-green-900 p-1 rounded">
+                          {/* <button className="text-green-600 hover:text-green-900 p-1 rounded transition-colors">
                             <Edit className="h-4 w-4" />
+                          </button> */}
+                          <button
+                            onClick={() => handleDeleteAccount(account._id)}
+                            disabled={deleteLoading === account._id}
+                            className="text-red-600 hover:text-red-900 p-1 rounded transition-colors disabled:opacity-50"
+                            title="Delete Account"
+                          >
+                            {deleteLoading === account._id ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
                           </button>
                         </div>
                       </td>
@@ -985,9 +855,7 @@ const ManageAccounts = () => {
           {filteredAccounts.length === 0 && (
             <div className="text-center py-12">
               <PiggyBank className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No accounts found
-              </h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No accounts found</h3>
               <p className="text-gray-500 mb-6">
                 {searchTerm
                   ? "Try adjusting your search criteria."
@@ -1003,18 +871,16 @@ const ManageAccounts = () => {
           )}
         </div>
 
-        {/* Create Account Modal */}
+        {/* Create Account Modal - Improved background */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    Create New Account
-                  </h2>
+                  <h2 className="text-xl font-semibold text-gray-900">Create New Account</h2>
                   <button
                     onClick={() => setShowModal(false)}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
                   >
                     <X className="h-6 w-6" />
                   </button>
@@ -1055,9 +921,7 @@ const ManageAccounts = () => {
                           </option>
                         ))
                       ) : (
-                        <option value="" disabled>
-                          No customers available
-                        </option>
+                        <option value="" disabled>No customers available</option>
                       )}
                     </select>
                     <p className="text-xs text-gray-500 mt-1">
@@ -1073,10 +937,7 @@ const ManageAccounts = () => {
                       required
                       value={formData.collectorId}
                       onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          collectorId: e.target.value,
-                        })
+                        setFormData({ ...formData, collectorId: e.target.value })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
@@ -1115,9 +976,7 @@ const ManageAccounts = () => {
                       <option value="">Select Plan</option>
                       {plans.map((plan) => (
                         <option key={plan._id} value={plan._id}>
-                          {plan.name} - ₹{plan.amount}/
-                          {getAmountLabelFromPlan(plan)} - {plan.interestRate}%
-                          - {getDurationDisplayFromPlan(plan)}
+                          {plan.name} - ₹{plan.amount}/{getAmountLabelFromPlan(plan)} - {plan.interestRate}% - {getDurationDisplayFromPlan(plan)}
                         </option>
                       ))}
                     </select>
@@ -1125,9 +984,7 @@ const ManageAccounts = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {formData.accountType === "weekly"
-                        ? "Weekly Amount (₹)"
-                        : "Daily Amount (₹)"}
+                      {formData.accountType === "weekly" ? "Weekly Amount (₹)" : "Daily Amount (₹)"}
                     </label>
                     <input
                       type="number"
@@ -1136,15 +993,10 @@ const ManageAccounts = () => {
                       min="10"
                       value={formData.dailyAmount}
                       onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          dailyAmount: e.target.value,
-                        })
+                        setFormData({ ...formData, dailyAmount: e.target.value })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={`Enter ${
-                        formData.accountType === "weekly" ? "weekly" : "daily"
-                      } amount`}
+                      placeholder={`Enter ${formData.accountType === "weekly" ? "weekly" : "daily"} amount`}
                     />
                   </div>
 
@@ -1208,19 +1060,18 @@ const ManageAccounts = () => {
           </div>
         )}
 
-        {/* Account Detail Modal */}
+        {/* Account Detail Modal - Improved background and added content */}
         {showDetailModal && selectedAccount && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6">
                 <div className="flex justify-between items-start mb-6">
                   <h2 className="text-2xl font-bold text-gray-900">
-                    Account Details -{" "}
-                    {selectedAccount.accountNumber || selectedAccount.accountId}
+                    Account Details - {selectedAccount.accountNumber || selectedAccount.accountId}
                   </h2>
                   <button
                     onClick={() => setShowDetailModal(false)}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
                   >
                     <X className="h-6 w-6" />
                   </button>
@@ -1235,69 +1086,51 @@ const ManageAccounts = () => {
                     </h3>
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Account Number:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Account Number:</span>
                         <span className="text-sm text-gray-900">
-                          {selectedAccount.accountNumber ||
-                            selectedAccount.accountId}
+                          {selectedAccount.accountNumber || selectedAccount.accountId}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Plan Type:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Plan Type:</span>
                         <span className="text-sm text-gray-900 capitalize">
                           {getPlanTypeFromAccount(selectedAccount)}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Customer ID:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Customer ID:</span>
                         <span className="text-sm text-gray-900">
                           {selectedAccount.customerId?.customerId}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Collector:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Collector:</span>
                         <span className="text-sm text-gray-900">
-                          {selectedAccount.collectorId?.name} (
-                          {selectedAccount.collectorId?.collectorId})
+                          {selectedAccount.collectorId?.name} ({selectedAccount.collectorId?.collectorId})
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Plan:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Plan:</span>
                         <span className="text-sm text-gray-900">
                           {selectedAccount.planId?.name}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm font-medium text-gray-600">
-                          {getAmountLabelFromAccount(selectedAccount) === "week"
-                            ? "Weekly Amount:"
-                            : "Daily Amount:"}
+                          {getAmountLabelFromAccount(selectedAccount) === "week" ? "Weekly Amount:" : "Daily Amount:"}
                         </span>
                         <span className="text-sm text-gray-900">
                           ₹{selectedAccount.dailyAmount}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Duration:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Duration:</span>
                         <span className="text-sm text-gray-900">
                           {getDurationDisplayFromAccount(selectedAccount)}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Interest Rate:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Interest Rate:</span>
                         <span className="text-sm text-gray-900">
                           {selectedAccount.interestRate}%
                         </span>
@@ -1314,67 +1147,47 @@ const ManageAccounts = () => {
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       {(() => {
                         const stats = getAccountStats(selectedAccount);
-                        const planType =
-                          getPlanTypeFromAccount(selectedAccount);
-                        const depositUnit =
-                          planType === "weekly" ? "weeks" : "days";
+                        const planType = getPlanTypeFromAccount(selectedAccount);
+                        const depositUnit = planType === "weekly" ? "weeks" : "days";
 
                         return (
                           <>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">
-                                Total Deposits:
-                              </span>
-                              <span className="text-sm text-gray-900">
-                                ₹{stats.totalDeposits}
-                              </span>
+                              <span className="text-sm font-medium text-gray-600">Total Deposits:</span>
+                              <span className="text-sm text-gray-900">₹{stats.totalDeposits}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">
-                                Missed Deposits:
-                              </span>
-                              <span className="text-sm text-gray-900">
-                                {stats.missedDeposits} {depositUnit}
-                              </span>
+                              <span className="text-sm font-medium text-gray-600">Missed Deposits:</span>
+                              <span className="text-sm text-gray-900">{stats.missedDeposits} {depositUnit}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">
-                                Last Deposit:
-                              </span>
+                              <span className="text-sm font-medium text-gray-600">Last Deposit:</span>
                               <span className="text-sm text-gray-900">
                                 {stats.lastDepositDate
-                                  ? new Date(
-                                      stats.lastDepositDate
-                                    ).toLocaleDateString()
+                                  ? new Date(stats.lastDepositDate).toLocaleDateString()
                                   : "No deposits"}
                               </span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">
-                                Next Due Date:
-                              </span>
+                              <span className="text-sm font-medium text-gray-600">Next Due Date:</span>
                               <span className="text-sm text-gray-900">
                                 {stats.nextDueDate
-                                  ? new Date(
-                                      stats.nextDueDate
-                                    ).toLocaleDateString()
+                                  ? new Date(stats.nextDueDate).toLocaleDateString()
                                   : "N/A"}
                               </span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">
-                                Total Interest:
-                              </span>
-                              <span className="text-sm text-gray-900">
-                                ₹{stats.totalInterest}
-                              </span>
+                              <span className="text-sm font-medium text-gray-600">Total Interest:</span>
+                              <span className="text-sm text-gray-900">₹{stats.totalInterest}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">
-                                Maturity Amount:
-                              </span>
+                              <span className="text-sm font-medium text-gray-600">Maturity Amount:</span>
+                              <span className="text-sm text-gray-900">₹{stats.maturityAmount}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm font-medium text-gray-600">Maturity Date:</span>
                               <span className="text-sm text-gray-900">
-                                ₹{stats.maturityAmount}
+                                {new Date(stats.maturityDate).toLocaleDateString()}
                               </span>
                             </div>
                           </>
@@ -1391,44 +1204,32 @@ const ManageAccounts = () => {
                     </h3>
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Name:
-                        </span>
-                        <span className="text-sm text-gray-900">
-                          {selectedAccount.customerId?.name}
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Name:</span>
+                        <span className="text-sm text-gray-900">{selectedAccount.customerId?.name}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Phone:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Phone:</span>
                         <span className="text-sm text-gray-900 flex items-center">
                           <Phone className="h-3 w-3 mr-1" />
                           {selectedAccount.customerId?.phone}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Email:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Email:</span>
                         <span className="text-sm text-gray-900 flex items-center">
                           <Mail className="h-3 w-3 mr-1" />
                           {selectedAccount.customerId?.email || "N/A"}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Address:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Address:</span>
                         <span className="text-sm text-gray-900 flex items-center">
                           <MapPin className="h-3 w-3 mr-1" />
                           {selectedAccount.customerId?.address || "N/A"}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Nominee:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Nominee:</span>
                         <span className="text-sm text-gray-900">
                           {selectedAccount.customerId?.nomineeName || "N/A"}
                         </span>
@@ -1444,52 +1245,23 @@ const ManageAccounts = () => {
                     </h3>
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Created By:
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Status:</span>
+                        <span className="text-sm text-gray-900">{getStatusBadge(selectedAccount.status)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">Start Date:</span>
                         <span className="text-sm text-gray-900">
-                          {selectedAccount.createdBy || "Admin"}
+                          {new Date(selectedAccount.startDate).toLocaleDateString()}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Created On:
-                        </span>
-                        <span className="text-sm text-gray-900">
-                          {new Date(
-                            selectedAccount.createdAt ||
-                              selectedAccount.startDate
-                          ).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Updated By:
-                        </span>
-                        <span className="text-sm text-gray-900">
-                          {selectedAccount.updatedBy || "N/A"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">
-                          Updated On:
-                        </span>
-                        <span className="text-sm text-gray-900">
-                          {selectedAccount.updatedAt
-                            ? new Date(
-                                selectedAccount.updatedAt
-                              ).toLocaleDateString()
-                            : "N/A"}
-                        </span>
+                        <span className="text-sm font-medium text-gray-600">Maturity Status:</span>
+                        <span className="text-sm text-gray-900">{selectedAccount.maturityStatus}</span>
                       </div>
                       {selectedAccount.remarks && (
                         <div className="flex justify-between">
-                          <span className="text-sm font-medium text-gray-600">
-                            Remarks:
-                          </span>
-                          <span className="text-sm text-gray-900 text-right">
-                            {selectedAccount.remarks}
-                          </span>
+                          <span className="text-sm font-medium text-gray-600">Remarks:</span>
+                          <span className="text-sm text-gray-900 text-right">{selectedAccount.remarks}</span>
                         </div>
                       )}
                     </div>

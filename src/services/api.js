@@ -570,6 +570,86 @@ export const getTransactionsByAccount = (accountId) => API.get(`/transactions/ac
 export const getTransactionsByCustomer = (customerId) => API.get(`/transactions/customer/${customerId}`);
 export const getRecentTransactions = (limit = 10) => API.get(`/transactions/recent?limit=${limit}`);
 
+// ADD WITHDRAWAL FUNCTIONS
+// FIXED WITHDRAWAL FUNCTION - Bypass interceptor issues
+export const withdrawAmount = (withdrawalData) => {
+  const token = localStorage.getItem('customerToken');
+  console.log('🔐 Withdrawal Token:', token ? 'PRESENT' : 'MISSING');
+  
+  // Use axios directly instead of API to avoid interceptor issues
+  return axios.post('http://localhost:5000/api/payments/withdraw', withdrawalData, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    }
+  });
+};
+export const getWithdrawalHistory = (accountId) => {
+  const token = localStorage.getItem('customerToken');
+  return API.get(`/payments/account/${accountId}/withdrawals`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+};
+// Withdrawal API functions
+export const getPendingWithdrawals = async () => {
+  try {
+    const token = localStorage.getItem("collectorToken");
+    const response = await axios.get(
+      `http://localhost:5000/api/payments/withdrawals/pending`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response;
+  } catch (error) {
+    console.error("Error fetching pending withdrawals:", error);
+    throw error;
+  }
+};
+
+export const approveWithdrawal = async (withdrawalId) => {
+  try {
+    console.log(withdrawalId, "withdrawal id")
+    const token = localStorage.getItem("collectorToken");
+    const response = await axios.put(
+      `http://localhost:5000/api/payments/withdrawals/${withdrawalId}/approve`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response;
+  } catch (error) {
+    console.error("Error approving withdrawal:", error);
+    throw error;
+  }
+};
+
+export const rejectWithdrawal = async (withdrawalId, rejectionData) => {
+  try {
+    const token = localStorage.getItem("collectorToken");
+    const response = await axios.put(
+      `http://localhost:5000/api/payments/withdrawals/${withdrawalId}/reject`,
+      rejectionData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response;
+  } catch (error) {
+    console.error("Error rejecting withdrawal:", error);
+    throw error;
+  }
+};
+
 // ==================== PLANS API ====================
 
 export const getPlans = (params = {}) => API.get('/plans', { params });
@@ -594,6 +674,7 @@ export const getPaymentStats = () => API.get('/payments/stats/overview');
 export const getPaymentsByCustomer = (customerId) => API.get(`/payments/customer/${customerId}`);
 export const getPaymentsByCollector = (collectorId) => API.get(`/payments/collector/${collectorId}`);
 export const processBulkPayments = (paymentsData) => API.post('/payments/bulk', paymentsData);
+
 
 // UPDATED PAYMENT PROCESSING ENDPOINTS - Now properly authenticated
 export const processPayment = (paymentData) => API.post('/payments/process', paymentData);
