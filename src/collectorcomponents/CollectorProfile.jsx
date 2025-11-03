@@ -19,6 +19,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Footer from "../components/Footer";
+import FooterCollector from "./FooterCollector";
 
 const CollectorProfile = () => {
   const [profile, setProfile] = useState({
@@ -482,7 +483,7 @@ const CollectorProfile = () => {
           </div>
         </div>
       </main>
-      <Footer />
+      <FooterCollector/>
     </div>
   );
 };

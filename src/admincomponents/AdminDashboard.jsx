@@ -10,7 +10,7 @@ import {
   PieChart,
   ArrowUp,
   ArrowDown,
-  RefreshCw // Add this import
+  RefreshCw
 } from "lucide-react";
 import axios from "axios";
 
@@ -140,13 +140,17 @@ const AdminDashboard = () => {
     const mockAccounts = [
       { _id: '1', status: 'active', dailyAmount: 100, planId: { name: 'Basic Plan' } },
       { _id: '2', status: 'active', dailyAmount: 150, planId: { name: 'Premium Plan' } },
-      { _id: '3', status: 'inactive', dailyAmount: 200, planId: { name: 'Basic Plan' } }
+      { _id: '3', status: 'inactive', dailyAmount: 200, planId: { name: 'Basic Plan' } },
+      { _id: '4', status: 'active', dailyAmount: 150, planId: { name: 'Premium Plan' } },
+      { _id: '5', status: 'active', dailyAmount: 200, planId: { name: 'Gold Plan' } }
     ];
     
     const mockCustomers = [
       { _id: '1', name: 'Customer 1' },
       { _id: '2', name: 'Customer 2' },
-      { _id: '3', name: 'Customer 3' }
+      { _id: '3', name: 'Customer 3' },
+      { _id: '4', name: 'Customer 4' },
+      { _id: '5', name: 'Customer 5' }
     ];
     
     const mockCollectors = [
@@ -163,12 +167,14 @@ const AdminDashboard = () => {
       { _id: '3', name: 'Gold Plan', amount: 200 }
     ];
     
-    setPlanData(mockPlans.map(plan => ({
+    const planDistribution = mockPlans.map(plan => ({
       name: plan.name,
       accounts: mockAccounts.filter(acc => acc.planId?.name === plan.name).length,
       amount: plan.amount,
-      percentage: 33.3
-    })));
+      percentage: ((mockAccounts.filter(acc => acc.planId?.name === plan.name).length / mockAccounts.length) * 100).toFixed(1)
+    }));
+    
+    setPlanData(planDistribution);
   };
 
   // Add a manual refresh function
@@ -177,16 +183,44 @@ const AdminDashboard = () => {
     fetchData();
   };
 
-  // Add token debug function
-  const debugToken = () => {
-    const token = localStorage.getItem('adminToken');
-    console.log('🔍 Token debug:', {
-      exists: !!token,
-      length: token ? token.length : 0,
-      preview: token ? token.substring(0, 50) + '...' : 'None'
-    });
-    alert(`Token exists: ${!!token}\nLength: ${token ? token.length : 0}`);
+  // Function to get color based on index
+  const getPlanColor = (index) => {
+    const colors = [
+      'bg-blue-500', 'bg-green-500', 'bg-purple-500', 
+      'bg-orange-500', 'bg-red-500', 'bg-teal-500'
+    ];
+    return colors[index % colors.length];
   };
+
+  // Function to get text color based on index
+  const getPlanTextColor = (index) => {
+    const colors = [
+      'text-blue-600', 'text-green-600', 'text-purple-600', 
+      'text-orange-600', 'text-red-600', 'text-teal-600'
+    ];
+    return colors[index % colors.length];
+  };
+
+  // Function to get background color based on index
+  const getPlanBgColor = (index) => {
+    const colors = [
+      'bg-blue-50', 'bg-green-50', 'bg-purple-50', 
+      'bg-orange-50', 'bg-red-50', 'bg-teal-50'
+    ];
+    return colors[index % colors.length];
+  };
+
+  // Function to get border color based on index
+  const getPlanBorderColor = (index) => {
+    const colors = [
+      'border-blue-200', 'border-green-200', 'border-purple-200', 
+      'border-orange-200', 'border-red-200', 'border-teal-200'
+    ];
+    return colors[index % colors.length];
+  };
+
+  // Find maximum account count for bar chart scaling
+  const maxAccounts = Math.max(...planData.map(plan => plan.accounts), 1);
 
   const statsCards = [
     {
@@ -259,21 +293,13 @@ const AdminDashboard = () => {
             <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
             <p className="text-gray-600 mt-2">Overview of your pigmy business</p>
           </div>
-          <div className="flex gap-2">
-            {/* <button
-              onClick={debugToken}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg transition-colors text-sm"
-            >
-              Debug Token
-            </button> */}
-            {/* <button
-              onClick={handleRefresh}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </button> */}
-          </div>
+          <button
+            onClick={handleRefresh}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </button>
         </div>
 
         {/* Stats Grid */}
@@ -299,21 +325,46 @@ const AdminDashboard = () => {
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Plan Distribution */}
+          {/* Plan Distribution Bar Chart */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center mb-4">
+            <div className="flex items-center mb-6">
               <BarChart3 className="h-5 w-5 text-gray-600 mr-2" />
               <h3 className="text-lg font-semibold text-gray-900">Plan Distribution</h3>
             </div>
-            <div className="space-y-4">
+            
+            {/* Bar Chart */}
+            <div className="space-y-4 mb-6">
               {planData.map((plan, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div key={index} className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="font-medium text-gray-700">{plan.name}</span>
+                    <span className="text-gray-500">{plan.accounts} accounts ({plan.percentage}%)</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div 
+                      className={`h-3 rounded-full ${getPlanColor(index)} transition-all duration-500 ease-out`}
+                      style={{ 
+                        width: `${(plan.accounts / maxAccounts) * 100}%` 
+                      }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>₹{plan.amount}/day</span>
+                    <span>{plan.accounts} accounts</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Plan Details List */}
+            <div className="space-y-3">
+              {planData.map((plan, index) => (
+                <div 
+                  key={index} 
+                  className={`flex items-center justify-between p-3 rounded-lg border ${getPlanBorderColor(index)} ${getPlanBgColor(index)}`}
+                >
                   <div className="flex items-center">
-                    <div className={`w-3 h-3 rounded-full mr-3 ${
-                      index % 4 === 0 ? 'bg-blue-500' : 
-                      index % 4 === 1 ? 'bg-green-500' : 
-                      index % 4 === 2 ? 'bg-purple-500' : 'bg-orange-500'
-                    }`}></div>
+                    <div className={`w-3 h-3 rounded-full mr-3 ${getPlanColor(index)}`}></div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">{plan.name}</p>
                       <p className="text-xs text-gray-500">₹{plan.amount}/day</p>
@@ -330,7 +381,7 @@ const AdminDashboard = () => {
 
           {/* Account Status */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center mb-4">
+            <div className="flex items-center mb-6">
               <PieChart className="h-5 w-5 text-gray-600 mr-2" />
               <h3 className="text-lg font-semibold text-gray-900">Account Status</h3>
             </div>
@@ -367,7 +418,7 @@ const AdminDashboard = () => {
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
           <div className="flex items-center mb-4">
             <Calendar className="h-5 w-5 text-gray-600 mr-2" />
             <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
@@ -405,7 +456,7 @@ const AdminDashboard = () => {
         </div>
 
         {/* Quick Actions */}
-        <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <button className="p-4 bg-blue-50 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors text-center">

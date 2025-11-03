@@ -38,9 +38,7 @@ const PigmyLandingPage = () => {
               <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 transition-colors font-medium">
                 How It Works
               </a>
-              <a href="#testimonials" className="text-gray-700 hover:text-blue-600 transition-colors font-medium">
-                Testimonials
-              </a>
+            
             </div>
 
            

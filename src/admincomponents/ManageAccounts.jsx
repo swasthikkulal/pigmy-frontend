@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   Plus,
   Search,
-  Edit,
   Eye,
   PiggyBank,
   TrendingUp,
@@ -20,14 +19,13 @@ import {
   FileText,
   X,
   Trash2,
+  Download,
 } from "lucide-react";
 import {
   getAccounts,
   createAccount,
-  updateAccount,
   getCollectors,
   getPlans,
-  getTransactions,
 } from "../services/api";
 import axios from "axios";
 
@@ -36,16 +34,17 @@ const ManageAccounts = () => {
   const [customers, setCustomers] = useState([]);
   const [collectors, setCollectors] = useState([]);
   const [plans, setPlans] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [accountPayments, setAccountPayments] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showStatementModal, setShowStatementModal] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
+  const [accountTransactions, setAccountTransactions] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [submitLoading, setSubmitLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(null);
+  const [statementLoading, setStatementLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     accountNumber: "",
@@ -211,41 +210,36 @@ const ManageAccounts = () => {
     }
   }, [showModal]);
 
-  // Function to fetch payments for a specific account
-  const fetchAccountPayments = async (accountId) => {
+  // Function to fetch account transactions
+  const fetchAccountTransactions = async (accountId) => {
     try {
+      setStatementLoading(true);
       const token = localStorage.getItem("adminToken");
       const response = await axios.get(
-        `http://localhost:5000/api/payments/account/${accountId}`,
+        `http://localhost:5000/api/payments/acc/${accountId}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
           },
+          timeout: 8000,
         }
       );
       
+      console.log("Fetched payment transactions:", response.data);
+      
       if (response.data.success) {
-        return response.data.data;
+        return response.data.data || [];
       }
       return [];
     } catch (error) {
-      console.error(`Error fetching payments for account ${accountId}:`, error);
+      console.warn(`Transactions endpoint not available for account ${accountId}:`, error.message);
       return [];
+    } finally {
+      setStatementLoading(false);
     }
   };
 
-  // Function to fetch all account payments
-  const fetchAllAccountPayments = async (accountList) => {
-    const paymentsMap = {};
-    
-    for (const account of accountList) {
-      const payments = await fetchAccountPayments(account._id);
-      paymentsMap[account._id] = payments;
-    }
-    
-    return paymentsMap;
-  };
-
+  // Get account stats
   const getAccountStats = (account) => {
     if (!account) {
       return {
@@ -259,20 +253,13 @@ const ManageAccounts = () => {
       };
     }
 
-    // Use account's own transactions if available
+    // Use only account's own transactions
     const accountTransactions = account.transactions || [];
-    const accountPaymentsData = accountPayments[account._id] || [];
 
-    // Combine both transactions and payments
-    const allDeposits = [
-      ...accountTransactions.filter(t => t.type === 'deposit'),
-      ...accountPaymentsData.filter(p => p.status === 'completed' || p.status === 'verified')
-    ];
-
-    // Calculate total deposits
-    const totalDeposits = allDeposits.reduce((sum, deposit) => {
-      return sum + (deposit.amount || 0);
-    }, 0);
+    // Calculate total deposits from transactions
+    const totalDeposits = accountTransactions
+      .filter((t) => t.type === "deposit")
+      .reduce((sum, deposit) => sum + (deposit.amount || 0), 0);
 
     // Calculate missed deposits based on plan type
     const startDate = new Date(account.startDate);
@@ -282,15 +269,20 @@ const ManageAccounts = () => {
     let expectedDeposits = 0;
     switch (planType.toLowerCase()) {
       case "daily":
-        const daysPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+        const daysPassed = Math.floor(
+          (today - startDate) / (1000 * 60 * 60 * 24)
+        );
         expectedDeposits = Math.max(0, daysPassed);
         break;
       case "weekly":
-        const weeksPassed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24 * 7));
+        const weeksPassed = Math.floor(
+          (today - startDate) / (1000 * 60 * 60 * 24 * 7)
+        );
         expectedDeposits = Math.max(0, weeksPassed);
         break;
       case "monthly":
-        const monthsPassed = (today.getFullYear() - startDate.getFullYear()) * 12 +
+        const monthsPassed =
+          (today.getFullYear() - startDate.getFullYear()) * 12 +
           (today.getMonth() - startDate.getMonth());
         expectedDeposits = Math.max(0, monthsPassed);
         break;
@@ -298,16 +290,19 @@ const ManageAccounts = () => {
         expectedDeposits = 0;
     }
 
-    const missedDeposits = Math.max(0, expectedDeposits - allDeposits.length);
+    const missedDeposits = Math.max(
+      0,
+      expectedDeposits - accountTransactions.length
+    );
 
     // Calculate next due date
-    const lastDeposit = allDeposits[allDeposits.length - 1];
+    const lastDeposit = accountTransactions[accountTransactions.length - 1];
     let nextDueDate = new Date();
-    
-    if (lastDeposit?.date || lastDeposit?.paymentDate) {
-      const lastDepositDate = new Date(lastDeposit.date || lastDeposit.paymentDate);
+
+    if (lastDeposit?.date) {
+      const lastDepositDate = new Date(lastDeposit.date);
       nextDueDate = new Date(lastDepositDate);
-      
+
       switch (planType.toLowerCase()) {
         case "daily":
           nextDueDate.setDate(nextDueDate.getDate() + 1);
@@ -324,39 +319,44 @@ const ManageAccounts = () => {
     }
 
     // Calculate interest and maturity amount
-    const interestRate = account.interestRate || account.planId?.interestRate || 6.5;
-    const totalInterest = ((totalDeposits * interestRate) / 100) * (parseInt(account.duration) / 12);
+    const interestRate =
+      account.interestRate || account.planId?.interestRate || 6.5;
+    const totalInterest =
+      ((totalDeposits * interestRate) / 100) *
+      (parseInt(account.duration) / 12);
     const maturityAmount = totalDeposits + totalInterest;
 
     return {
       totalDeposits,
       missedDeposits,
-      lastDepositDate: lastDeposit ? (lastDeposit.date || lastDeposit.paymentDate) : null,
+      lastDepositDate: lastDeposit ? lastDeposit.date : null,
       nextDueDate: nextDueDate.toISOString().split("T")[0],
       totalInterest: parseFloat(totalInterest.toFixed(2)),
       maturityAmount: parseFloat(maturityAmount.toFixed(2)),
-      maturityDate: account.maturityDate,
+      maturityDate:
+        account.maturityDate ||
+        calculateMaturityDate(account.startDate, account.duration, planType),
       maturityStatus: account.maturityStatus || "Pending",
-      transactionsCount: allDeposits.length,
+      transactionsCount: accountTransactions.length,
     };
   };
 
   // Delete account function
   const handleDeleteAccount = async (accountId) => {
-    const account = accounts.find(acc => acc._id === accountId);
+    const account = accounts.find((acc) => acc._id === accountId);
     const stats = getAccountStats(account);
-    
+
     if (stats.transactionsCount > 0 || stats.totalDeposits > 0) {
       const shouldForceDelete = window.confirm(
         `This account has ${stats.transactionsCount} transactions and total deposits of ₹${stats.totalDeposits}. ` +
-        `Are you sure you want to FORCE DELETE? This action cannot be undone and will permanently remove all transaction history.`
+          `Are you sure you want to FORCE DELETE? This action cannot be undone and will permanently remove all transaction history.`
       );
-      
+
       if (!shouldForceDelete) {
         const closeInstead = window.confirm(
           "Would you like to close this account instead? This will preserve transaction history."
         );
-        
+
         if (closeInstead) {
           await handleCloseAccount(accountId);
         }
@@ -369,7 +369,7 @@ const ManageAccounts = () => {
     }
 
     setDeleteLoading(accountId);
-    
+
     try {
       const token = localStorage.getItem("adminToken");
       const response = await axios.delete(
@@ -380,10 +380,10 @@ const ManageAccounts = () => {
           },
         }
       );
-      
+
       if (response.data.success) {
-        setAccounts(prevAccounts => 
-          prevAccounts.filter(account => account._id !== accountId)
+        setAccounts((prevAccounts) =>
+          prevAccounts.filter((account) => account._id !== accountId)
         );
         alert(response.data.message);
       }
@@ -398,24 +398,24 @@ const ManageAccounts = () => {
   // Close account function
   const handleCloseAccount = async (accountId) => {
     setDeleteLoading(accountId);
-    
+
     try {
       const token = localStorage.getItem("adminToken");
       const response = await axios.patch(
         `http://localhost:5000/api/accounts/${accountId}/status`,
-        { status: 'closed' },
+        { status: "closed" },
         {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         }
       );
-      
+
       if (response.data.success) {
-        setAccounts(prevAccounts => 
-          prevAccounts.map(account => 
-            account._id === accountId 
-              ? { ...account, status: 'closed' }
+        setAccounts((prevAccounts) =>
+          prevAccounts.map((account) =>
+            account._id === accountId
+              ? { ...account, status: "closed" }
               : account
           )
         );
@@ -431,11 +431,69 @@ const ManageAccounts = () => {
     }
   };
 
-  // Handle view details - FIXED FUNCTION
+  // Handle view details
   const handleViewDetails = (account) => {
-    console.log("View details clicked for account:", account);
     setSelectedAccount(account);
     setShowDetailModal(true);
+  };
+
+  // Handle view statement
+  const handleViewStatement = async (account) => {
+    setSelectedAccount(account);
+    setShowStatementModal(true);
+
+    // Fetch transactions for this account
+    const transactions = await fetchAccountTransactions(account._id);
+    setAccountTransactions(transactions);
+  };
+
+  // Export statement to CSV
+  const exportStatementToCSV = () => {
+    if (!selectedAccount || accountTransactions.length === 0) return;
+
+    const headers = [
+      "Date",
+      "Payment ID",
+      "Type",
+      "Amount (₹)",
+      "Status",
+      "Payment Method",
+      "Created By",
+      "User Type",
+      "Remarks",
+      "Processed At"
+    ];
+
+    const csvData = accountTransactions.map((payment) => [
+      new Date(payment.paymentDate || payment.createdAt).toLocaleDateString(),
+      payment._id,
+      payment.type?.charAt(0).toUpperCase() + payment.type?.slice(1) || "Deposit",
+      payment.type === "deposit" ? payment.amount : -Math.abs(payment.amount),
+      payment.status?.charAt(0).toUpperCase() + payment.status?.slice(1) || "Completed",
+      payment.paymentMethod || "Cash",
+      payment.createdBy?.name || "Customer",
+      payment.createdByModel || "Customer",
+      payment.remarks || "",
+      payment.processedAt ? new Date(payment.processedAt).toLocaleDateString() : ""
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...csvData.map((row) => row.join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.style.display = "none";
+    a.href = url;
+    a.download = `payment-statement-${selectedAccount.accountNumber}-${
+      new Date().toISOString().split("T")[0]
+    }.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   };
 
   useEffect(() => {
@@ -488,15 +546,15 @@ const ManageAccounts = () => {
               amount: 100,
               type: "deposit",
               date: "2025-10-23",
-              collectedBy: "col1"
+              collectedBy: "col1",
             },
             {
               amount: 100,
               type: "deposit",
               date: "2025-10-24",
-              collectedBy: "col1"
-            }
-          ]
+              collectedBy: "col1",
+            },
+          ],
         },
       ];
 
@@ -534,11 +592,6 @@ const ManageAccounts = () => {
         setAccounts(accountsData);
         setCollectors(collectorsRes?.data?.data || []);
         setPlans(plansRes?.data?.data || []);
-
-        // Fetch payments for all accounts
-        const paymentsData = await fetchAllAccountPayments(accountsData);
-        setAccountPayments(paymentsData);
-
       } catch (error) {
         console.error("Error in API calls:", error);
         setAccounts(mockAccounts);
@@ -557,7 +610,8 @@ const ManageAccounts = () => {
 
     try {
       const selectedPlan = plans.find((plan) => plan._id === formData.planId);
-      const accountType = formData.accountType || getPlanTypeFromPlan(selectedPlan) || "monthly";
+      const accountType =
+        formData.accountType || getPlanTypeFromPlan(selectedPlan) || "monthly";
       const duration = selectedPlan?.duration || formData.duration;
 
       const accountData = {
@@ -587,9 +641,10 @@ const ManageAccounts = () => {
       }
     } catch (error) {
       console.error("Error creating account:", error);
-      
+
       if (error.response) {
-        const errorMessage = error.response.data.message || error.response.data.error;
+        const errorMessage =
+          error.response.data.message || error.response.data.error;
         alert(`Error creating account: ${errorMessage}`);
       } else {
         alert("Network error. Please try again.");
@@ -642,9 +697,12 @@ const ManageAccounts = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Manage Accounts</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Manage Accounts
+            </h1>
             <p className="text-gray-600 mt-2">
-              {error ? "Using demo data - " : ""}Create and manage pigmy savings accounts
+              {error ? "Using demo data - " : ""}Create and manage pigmy savings
+              accounts
             </p>
             {error && <p className="text-yellow-600 text-sm mt-1">{error}</p>}
           </div>
@@ -665,8 +723,12 @@ const ManageAccounts = () => {
                 <PiggyBank className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Accounts</p>
-                <p className="text-2xl font-bold text-gray-900">{accounts.length}</p>
+                <p className="text-sm font-medium text-gray-600">
+                  Total Accounts
+                </p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {accounts.length}
+                </p>
               </div>
             </div>
           </div>
@@ -677,7 +739,9 @@ const ManageAccounts = () => {
                 <TrendingUp className="h-6 w-6 text-green-600" />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-600">Active Accounts</p>
+                <p className="text-sm font-medium text-gray-600">
+                  Active Accounts
+                </p>
                 <p className="text-2xl font-bold text-gray-900">
                   {accounts.filter((a) => a.status === "active").length}
                 </p>
@@ -691,7 +755,9 @@ const ManageAccounts = () => {
                 <DollarSign className="h-6 w-6 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Deposits</p>
+                <p className="text-sm font-medium text-gray-600">
+                  Total Deposits
+                </p>
                 <p className="text-2xl font-bold text-gray-900">
                   ₹
                   {accounts.reduce((sum, account) => {
@@ -710,7 +776,9 @@ const ManageAccounts = () => {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-600">Collectors</p>
-                <p className="text-2xl font-bold text-gray-900">{collectors.length}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {collectors.length}
+                </p>
               </div>
             </div>
           </div>
@@ -768,10 +836,12 @@ const ManageAccounts = () => {
                           {account.accountNumber || account.accountId}
                         </div>
                         <div className="text-sm text-gray-500">
-                          Start: {new Date(account.startDate).toLocaleDateString()}
+                          Start:{" "}
+                          {new Date(account.startDate).toLocaleDateString()}
                         </div>
                         <div className="text-xs text-gray-400">
-                          Matures: {new Date(stats.maturityDate).toLocaleDateString()}
+                          Matures:{" "}
+                          {new Date(stats.maturityDate).toLocaleDateString()}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -805,14 +875,12 @@ const ManageAccounts = () => {
                           ₹{account.dailyAmount}/{amountLabel}
                         </div>
                         <div className="text-xs text-gray-400">
-                          {account.interestRate}% • {getDurationDisplayFromAccount(account)}
+                          {account.interestRate}% •{" "}
+                          {getDurationDisplayFromAccount(account)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getStatusBadge(account.status)}
-                        <div className="text-xs text-gray-500 mt-1">
-                          Deposits: ₹{stats.totalDeposits}
-                        </div>
                         {stats.transactionsCount > 0 && (
                           <div className="text-xs text-blue-500 mt-1">
                             {stats.transactionsCount} payments
@@ -821,16 +889,20 @@ const ManageAccounts = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
-                          <button
+                          {/* <button
                             onClick={() => handleViewDetails(account)}
                             className="text-blue-600 hover:text-blue-900 p-1 rounded transition-colors"
                             title="View Details"
                           >
                             <Eye className="h-4 w-4" />
-                          </button>
-                          {/* <button className="text-green-600 hover:text-green-900 p-1 rounded transition-colors">
-                            <Edit className="h-4 w-4" />
                           </button> */}
+                          <button
+                            onClick={() => handleViewStatement(account)}
+                            className="text-green-600 hover:text-green-900 p-1 rounded transition-colors"
+                            title="View Statement"
+                          >
+                            <FileText className="h-4 w-4" />
+                          </button>
                           <button
                             onClick={() => handleDeleteAccount(account._id)}
                             disabled={deleteLoading === account._id}
@@ -855,7 +927,9 @@ const ManageAccounts = () => {
           {filteredAccounts.length === 0 && (
             <div className="text-center py-12">
               <PiggyBank className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No accounts found</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                No accounts found
+              </h3>
               <p className="text-gray-500 mb-6">
                 {searchTerm
                   ? "Try adjusting your search criteria."
@@ -871,203 +945,248 @@ const ManageAccounts = () => {
           )}
         </div>
 
-        {/* Create Account Modal - Improved background */}
-        {showModal && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-semibold text-gray-900">Create New Account</h2>
-                  <button
-                    onClick={() => setShowModal(false)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <X className="h-6 w-6" />
-                  </button>
-                </div>
+        {/* Create Account Modal */}
+       {/* Create Account Modal */}
+{showModal && (
+  <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+    <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">
+            Create New Account
+          </h2>
+          <button
+            onClick={() => setShowModal(false)}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {/* Account Number Field */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Account Number
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.accountNumber}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Auto-generated</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Customer
-                    </label>
-                    <select
-                      required
-                      value={formData.customerId}
-                      onChange={(e) =>
-                        setFormData({ ...formData, customerId: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select Customer</option>
-                      {customers.length > 0 ? (
-                        customers.map((customer) => (
-                          <option key={customer._id} value={customer._id}>
-                            {customer.name} - {customer.phone}
-                          </option>
-                        ))
-                      ) : (
-                        <option value="" disabled>No customers available</option>
-                      )}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {customers.length} customer(s) available
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Collector
-                    </label>
-                    <select
-                      required
-                      value={formData.collectorId}
-                      onChange={(e) =>
-                        setFormData({ ...formData, collectorId: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select Collector</option>
-                      {collectors.map((collector) => (
-                        <option key={collector._id} value={collector._id}>
-                          {collector.name} - {collector.area}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Plan
-                    </label>
-                    <select
-                      required
-                      value={formData.planId}
-                      onChange={(e) => {
-                        const selectedPlan = plans.find(
-                          (plan) => plan._id === e.target.value
-                        );
-                        const planType = getPlanTypeFromPlan(selectedPlan);
-
-                        setFormData({
-                          ...formData,
-                          planId: e.target.value,
-                          accountType: planType,
-                          dailyAmount: selectedPlan?.amount || "",
-                          duration: selectedPlan?.duration || "12",
-                        });
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select Plan</option>
-                      {plans.map((plan) => (
-                        <option key={plan._id} value={plan._id}>
-                          {plan.name} - ₹{plan.amount}/{getAmountLabelFromPlan(plan)} - {plan.interestRate}% - {getDurationDisplayFromPlan(plan)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {formData.accountType === "weekly" ? "Weekly Amount (₹)" : "Daily Amount (₹)"}
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      readOnly
-                      min="10"
-                      value={formData.dailyAmount}
-                      onChange={(e) =>
-                        setFormData({ ...formData, dailyAmount: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={`Enter ${formData.accountType === "weekly" ? "weekly" : "daily"} amount`}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Start Date
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={formData.startDate}
-                      onChange={(e) =>
-                        setFormData({ ...formData, startDate: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Remarks
-                    </label>
-                    <textarea
-                      value={formData.remarks}
-                      onChange={(e) =>
-                        setFormData({ ...formData, remarks: e.target.value })
-                      }
-                      rows="2"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Optional comments..."
-                    />
-                  </div>
-
-                  <div className="flex space-x-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowModal(false)}
-                      disabled={submitLoading}
-                      className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors border border-gray-300 rounded-lg disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={submitLoading}
-                      className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center"
-                    >
-                      {submitLoading ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                          Creating...
-                        </>
-                      ) : (
-                        "Create Account"
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Account Number Field */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Account Number
+            </label>
+            <input
+              type="text"
+              value={formData.accountNumber}
+              readOnly
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">Auto-generated</p>
           </div>
-        )}
 
-        {/* Account Detail Modal - Improved background and added content */}
+          {/* Customer Field */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Customer
+            </label>
+            <select
+              required
+              value={formData.customerId}
+              onChange={(e) =>
+                setFormData({ ...formData, customerId: e.target.value })
+              }
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select Customer</option>
+              {customers.length > 0 ? (
+                customers.map((customer) => (
+                  <option key={customer._id} value={customer._id}>
+                    {customer.name} - {customer.phone}
+                  </option>
+                ))
+              ) : (
+                <option value="" disabled>
+                  No customers available
+                </option>
+              )}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {customers.length} customer(s) available
+            </p>
+          </div>
+
+          {/* Collector Field */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Collector
+            </label>
+            <select
+              required
+              value={formData.collectorId}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  collectorId: e.target.value,
+                })
+              }
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select Collector</option>
+              {collectors.map((collector) => (
+                <option key={collector._id} value={collector._id}>
+                  {collector.name} - {collector.area}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Plan Field - UPDATED WITH FILTER */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Plan
+            </label>
+            <select
+              required
+              value={formData.planId}
+              onChange={(e) => {
+                const selectedPlan = plans.find(
+                  (plan) => plan._id === e.target.value
+                );
+                const planType = getPlanTypeFromPlan(selectedPlan);
+
+                setFormData({
+                  ...formData,
+                  planId: e.target.value,
+                  accountType: planType,
+                  dailyAmount: selectedPlan?.amount || "",
+                  duration: selectedPlan?.duration || "12",
+                });
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select Plan</option>
+              {plans
+                .filter(plan => 
+                  plan.status === "active" || 
+                  plan.status === "Active" || 
+                  !plan.status // Include plans with no status field
+                )
+                .map((plan) => (
+                  <option key={plan._id} value={plan._id}>
+                    {plan.name} - ₹{plan.amount}/
+                    {getAmountLabelFromPlan(plan)} - {plan.interestRate}%
+                    - {getDurationDisplayFromPlan(plan)}
+                  </option>
+                ))
+              }
+              {plans.filter(plan => 
+                plan.status === "active" || 
+                plan.status === "Active" || 
+                !plan.status
+              ).length === 0 && (
+                <option value="" disabled>
+                  No active plans available
+                </option>
+              )}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {plans.filter(plan => 
+                plan.status === "active" || 
+                plan.status === "Active" || 
+                !plan.status
+              ).length} active plan(s) available
+            </p>
+          </div>
+
+          {/* Rest of the form fields remain the same */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {formData.accountType === "weekly"
+                ? "Weekly Amount (₹)"
+                : "Daily Amount (₹)"}
+            </label>
+            <input
+              type="number"
+              required
+              readOnly
+              min="10"
+              value={formData.dailyAmount}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  dailyAmount: e.target.value,
+                })
+              }
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={`Enter ${
+                formData.accountType === "weekly" ? "weekly" : "daily"
+              } amount`}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Start Date
+            </label>
+            <input
+              type="date"
+              required
+              value={formData.startDate}
+              onChange={(e) =>
+                setFormData({ ...formData, startDate: e.target.value })
+              }
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Remarks
+            </label>
+            <textarea
+              value={formData.remarks}
+              onChange={(e) =>
+                setFormData({ ...formData, remarks: e.target.value })
+              }
+              rows="2"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Optional comments..."
+            />
+          </div>
+
+          <div className="flex space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowModal(false)}
+              disabled={submitLoading}
+              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors border border-gray-300 rounded-lg disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitLoading}
+              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center"
+            >
+              {submitLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Creating...
+                </>
+              ) : (
+                "Create Account"
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+)}
+
+        {/* Account Detail Modal */}
         {showDetailModal && selectedAccount && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6">
                 <div className="flex justify-between items-start mb-6">
                   <h2 className="text-2xl font-bold text-gray-900">
-                    Account Details - {selectedAccount.accountNumber || selectedAccount.accountId}
+                    Account Details -{" "}
+                    {selectedAccount.accountNumber || selectedAccount.accountId}
                   </h2>
                   <button
                     onClick={() => setShowDetailModal(false)}
@@ -1086,51 +1205,69 @@ const ManageAccounts = () => {
                     </h3>
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Account Number:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Account Number:
+                        </span>
                         <span className="text-sm text-gray-900">
-                          {selectedAccount.accountNumber || selectedAccount.accountId}
+                          {selectedAccount.accountNumber ||
+                            selectedAccount.accountId}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Plan Type:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Plan Type:
+                        </span>
                         <span className="text-sm text-gray-900 capitalize">
                           {getPlanTypeFromAccount(selectedAccount)}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Customer ID:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Customer ID:
+                        </span>
                         <span className="text-sm text-gray-900">
                           {selectedAccount.customerId?.customerId}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Collector:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Collector:
+                        </span>
                         <span className="text-sm text-gray-900">
-                          {selectedAccount.collectorId?.name} ({selectedAccount.collectorId?.collectorId})
+                          {selectedAccount.collectorId?.name} (
+                          {selectedAccount.collectorId?.collectorId})
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Plan:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Plan:
+                        </span>
                         <span className="text-sm text-gray-900">
                           {selectedAccount.planId?.name}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm font-medium text-gray-600">
-                          {getAmountLabelFromAccount(selectedAccount) === "week" ? "Weekly Amount:" : "Daily Amount:"}
+                          {getAmountLabelFromAccount(selectedAccount) === "week"
+                            ? "Weekly Amount:"
+                            : "Daily Amount:"}
                         </span>
                         <span className="text-sm text-gray-900">
                           ₹{selectedAccount.dailyAmount}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Duration:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Duration:
+                        </span>
                         <span className="text-sm text-gray-900">
                           {getDurationDisplayFromAccount(selectedAccount)}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Interest Rate:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Interest Rate:
+                        </span>
                         <span className="text-sm text-gray-900">
                           {selectedAccount.interestRate}%
                         </span>
@@ -1147,47 +1284,77 @@ const ManageAccounts = () => {
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       {(() => {
                         const stats = getAccountStats(selectedAccount);
-                        const planType = getPlanTypeFromAccount(selectedAccount);
-                        const depositUnit = planType === "weekly" ? "weeks" : "days";
+                        const planType =
+                          getPlanTypeFromAccount(selectedAccount);
+                        const depositUnit =
+                          planType === "weekly" ? "weeks" : "days";
 
                         return (
                           <>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">Total Deposits:</span>
-                              <span className="text-sm text-gray-900">₹{stats.totalDeposits}</span>
+                              <span className="text-sm font-medium text-gray-600">
+                                Total Deposits:
+                              </span>
+                              <span className="text-sm text-gray-900">
+                                ₹{stats.totalDeposits}
+                              </span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">Missed Deposits:</span>
-                              <span className="text-sm text-gray-900">{stats.missedDeposits} {depositUnit}</span>
+                              <span className="text-sm font-medium text-gray-600">
+                                Missed Deposits:
+                              </span>
+                              <span className="text-sm text-gray-900">
+                                {stats.missedDeposits} {depositUnit}
+                              </span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">Last Deposit:</span>
+                              <span className="text-sm font-medium text-gray-600">
+                                Last Deposit:
+                              </span>
                               <span className="text-sm text-gray-900">
                                 {stats.lastDepositDate
-                                  ? new Date(stats.lastDepositDate).toLocaleDateString()
+                                  ? new Date(
+                                      stats.lastDepositDate
+                                    ).toLocaleDateString()
                                   : "No deposits"}
                               </span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">Next Due Date:</span>
+                              <span className="text-sm font-medium text-gray-600">
+                                Next Due Date:
+                              </span>
                               <span className="text-sm text-gray-900">
                                 {stats.nextDueDate
-                                  ? new Date(stats.nextDueDate).toLocaleDateString()
+                                  ? new Date(
+                                      stats.nextDueDate
+                                    ).toLocaleDateString()
                                   : "N/A"}
                               </span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">Total Interest:</span>
-                              <span className="text-sm text-gray-900">₹{stats.totalInterest}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">Maturity Amount:</span>
-                              <span className="text-sm text-gray-900">₹{stats.maturityAmount}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600">Maturity Date:</span>
+                              <span className="text-sm font-medium text-gray-600">
+                                Total Interest:
+                              </span>
                               <span className="text-sm text-gray-900">
-                                {new Date(stats.maturityDate).toLocaleDateString()}
+                                ₹{stats.totalInterest}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm font-medium text-gray-600">
+                                Maturity Amount:
+                              </span>
+                              <span className="text-sm text-gray-900">
+                                ₹{stats.maturityAmount}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm font-medium text-gray-600">
+                                Maturity Date:
+                              </span>
+                              <span className="text-sm text-gray-900">
+                                {new Date(
+                                  stats.maturityDate
+                                ).toLocaleDateString()}
                               </span>
                             </div>
                           </>
@@ -1204,32 +1371,44 @@ const ManageAccounts = () => {
                     </h3>
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Name:</span>
-                        <span className="text-sm text-gray-900">{selectedAccount.customerId?.name}</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Name:
+                        </span>
+                        <span className="text-sm text-gray-900">
+                          {selectedAccount.customerId?.name}
+                        </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Phone:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Phone:
+                        </span>
                         <span className="text-sm text-gray-900 flex items-center">
                           <Phone className="h-3 w-3 mr-1" />
                           {selectedAccount.customerId?.phone}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Email:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Email:
+                        </span>
                         <span className="text-sm text-gray-900 flex items-center">
                           <Mail className="h-3 w-3 mr-1" />
                           {selectedAccount.customerId?.email || "N/A"}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Address:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Address:
+                        </span>
                         <span className="text-sm text-gray-900 flex items-center">
                           <MapPin className="h-3 w-3 mr-1" />
                           {selectedAccount.customerId?.address || "N/A"}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Nominee:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Nominee:
+                        </span>
                         <span className="text-sm text-gray-900">
                           {selectedAccount.customerId?.nomineeName || "N/A"}
                         </span>
@@ -1245,23 +1424,39 @@ const ManageAccounts = () => {
                     </h3>
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Status:</span>
-                        <span className="text-sm text-gray-900">{getStatusBadge(selectedAccount.status)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Start Date:</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Status:
+                        </span>
                         <span className="text-sm text-gray-900">
-                          {new Date(selectedAccount.startDate).toLocaleDateString()}
+                          {getStatusBadge(selectedAccount.status)}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">Maturity Status:</span>
-                        <span className="text-sm text-gray-900">{selectedAccount.maturityStatus}</span>
+                        <span className="text-sm font-medium text-gray-600">
+                          Start Date:
+                        </span>
+                        <span className="text-sm text-gray-900">
+                          {new Date(
+                            selectedAccount.startDate
+                          ).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">
+                          Maturity Status:
+                        </span>
+                        <span className="text-sm text-gray-900">
+                          {selectedAccount.maturityStatus}
+                        </span>
                       </div>
                       {selectedAccount.remarks && (
                         <div className="flex justify-between">
-                          <span className="text-sm font-medium text-gray-600">Remarks:</span>
-                          <span className="text-sm text-gray-900 text-right">{selectedAccount.remarks}</span>
+                          <span className="text-sm font-medium text-gray-600">
+                            Remarks:
+                          </span>
+                          <span className="text-sm text-gray-900 text-right">
+                            {selectedAccount.remarks || "NA"}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1271,6 +1466,187 @@ const ManageAccounts = () => {
                 <div className="mt-6 flex justify-end">
                   <button
                     onClick={() => setShowDetailModal(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors border border-gray-300 rounded-lg"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Account Statement Modal */}
+        {showStatementModal && selectedAccount && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+            <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">
+                      Payment Statement -{" "}
+                      {selectedAccount.accountNumber || selectedAccount.accountId}
+                    </h2>
+                    <p className="text-gray-600 mt-1">
+                      Customer: {selectedAccount.customerId?.name} • Plan:{" "}
+                      {selectedAccount.planId?.name} • Collector:{" "}
+                      {selectedAccount.collectorId?.name}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Total Payments: {accountTransactions.length}
+                    </p>
+                  </div>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={exportStatementToCSV}
+                      disabled={accountTransactions.length === 0}
+                      className="flex items-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export CSV
+                    </button>
+                    <button
+                      onClick={() => setShowStatementModal(false)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <X className="h-6 w-6" />
+                    </button>
+                  </div>
+                </div>
+
+                {statementLoading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading payment history...</p>
+                  </div>
+                ) : accountTransactions.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Date
+                          </th>
+                          {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Payment ID
+                          </th> */}
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Type
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Amount (₹)
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Method
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Created By
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Remarks
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {accountTransactions.map((payment, index) => (
+                          <tr key={payment._id || index} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {new Date(payment.paymentDate || payment.createdAt).toLocaleDateString()}
+                            </td>
+                            {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono text-xs">
+                              {payment._id?.slice(-8)}...
+                            </td> */}
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                payment.type === "deposit" 
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}>
+                                {payment.type?.charAt(0).toUpperCase() + payment.type?.slice(1)}
+                              </span>
+                            </td>
+                            <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
+                              payment.type === "deposit" ? "text-green-600" : "text-red-600"
+                            }`}>
+                              {payment.type === "deposit" ? "+" : "-"}₹{Math.abs(payment.amount)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                payment.status === "completed" 
+                                  ? "bg-green-100 text-green-800"
+                                  : payment.status === "pending"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}>
+                                {payment.status?.charAt(0).toUpperCase() + payment.status?.slice(1)}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
+                              {payment.paymentMethod || "Cash"}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <div>
+                                <div className="font-medium">{payment.createdBy?.name || "Customer"}</div>
+                                <div className="text-xs text-gray-500">{payment.createdByModel}</div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900">
+                              {payment.remarks || "NA"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50">
+                        <tr>
+                          <td colSpan="3" className="px-6 py-4 text-sm font-medium text-gray-900 text-right">
+                            Total Deposits:
+                          </td>
+                          <td className="px-6 py-4 text-sm font-bold text-green-600">
+                            +₹{accountTransactions
+                              .filter(t => t.type === "deposit" && t.status === "completed")
+                              .reduce((sum, t) => sum + (t.amount || 0), 0)}
+                          </td>
+                          <td colSpan="2" className="px-6 py-4 text-sm font-medium text-gray-900 text-right">
+                            Total Withdrawals:
+                          </td>
+                          <td className="px-6 py-4 text-sm font-bold text-red-600">
+                            -₹{accountTransactions
+                              .filter(t => t.type === "withdrawal" && t.status === "completed")
+                              .reduce((sum, t) => sum + Math.abs(t.amount || 0), 0)}
+                          </td>
+                          <td colSpan="2" className="px-6 py-4 text-sm font-medium text-gray-900 text-right">
+                            Net Balance:
+                          </td>
+                          <td className="px-6 py-4 text-sm font-bold text-gray-900">
+                            ₹{accountTransactions
+                              .filter(t => t.status === "completed")
+                              .reduce((sum, t) => {
+                                const amount = t.amount || 0;
+                                return t.type === "deposit" ? sum + amount : sum - Math.abs(amount);
+                              }, 0)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      No payment history found
+                    </h3>
+                    <p className="text-gray-500">
+                      No payment transactions available for this account.
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => setShowStatementModal(false)}
                     className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors border border-gray-300 rounded-lg"
                   >
                     Close

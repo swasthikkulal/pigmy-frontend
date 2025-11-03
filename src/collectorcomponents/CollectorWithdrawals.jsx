@@ -32,6 +32,7 @@ import {
   rejectWithdrawal,
 } from "../services/api";
 import Footer from "../components/Footer";
+import FooterCollector from "./FooterCollector";
 
 const CollectorWithdrawals = () => {
   const navigate = useNavigate();
@@ -56,115 +57,237 @@ const CollectorWithdrawals = () => {
   );
 
   // Load pending withdrawals for this collector's customers only
-  const loadWithdrawals = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      console.log(
-        "🔄 Loading withdrawals for collector:",
-        collectorData._id,
-        collectorData.name
-      );
+  // const loadWithdrawals = async () => {
+  //   try {
+  //     setLoading(true);
+  //     setError("");
+  //     console.log(
+  //       "🔄 Loading withdrawals for collector:",
+  //       collectorData._id,
+  //       collectorData.name
+  //     );
 
-      const response = await getPendingWithdrawals();
-      console.log("📊 API Response:", response.data);
+  //     const response = await getPendingWithdrawals();
+  //     console.log("📊 API Response:", response.data);
 
-      if (response.data.success) {
-        // Get all withdrawals from response
-        const allWithdrawals = response.data.data || [];
-        console.log("📦 All withdrawals from API:", allWithdrawals.length);
+  //     if (response.data.success) {
+  //       // Get all withdrawals from response
+  //       const allWithdrawals = response.data.data || [];
+  //       console.log("📦 All withdrawals from API:", allWithdrawals.length);
 
-        if (allWithdrawals.length === 0) {
-          console.log("❌ No withdrawals found in API response");
-          setWithdrawals([]);
-          return;
-        }
+  //       if (allWithdrawals.length === 0) {
+  //         console.log("❌ No withdrawals found in API response");
+  //         setWithdrawals([]);
+  //         return;
+  //       }
 
-        // Debug: Log the first withdrawal to see its structure
-        console.log("🔍 First withdrawal structure:", allWithdrawals[0]);
+  //       // Debug: Log the first withdrawal to see its structure
+  //       console.log("🔍 First withdrawal structure:", allWithdrawals[0]);
 
-        // Filter withdrawals to only show those from this collector's customers
-        const collectorWithdrawals = allWithdrawals.filter((withdrawal) => {
-          // Try different possible paths for collectorId
-          const accountCollectorId =
-            withdrawal.accountId?.collectorId?._id ||
-            withdrawal.accountId?.collectorId ||
-            withdrawal.collectorId?._id ||
-            withdrawal.collectorId ||
-            withdrawal.account?.collectorId?._id ||
-            withdrawal.account?.collectorId;
+  //       // Filter withdrawals to only show those from this collector's customers
+  //       const collectorWithdrawals = allWithdrawals.filter((withdrawal) => {
+  //         // Try different possible paths for collectorId
+  //         const accountCollectorId =
+  //           withdrawal.accountId?.collectorId?._id ||
+  //           withdrawal.accountId?.collectorId ||
+  //           withdrawal.collectorId?._id ||
+  //           withdrawal.collectorId ||
+  //           withdrawal.account?.collectorId?._id ||
+  //           withdrawal.account?.collectorId;
 
-          const loggedInCollectorId = collectorData._id;
+  //         const loggedInCollectorId = collectorData._id;
 
-          console.log("🔍 Withdrawal filtering:", {
-            withdrawalId: withdrawal._id,
-            accountCollectorId,
-            loggedInCollectorId,
-            matches: accountCollectorId === loggedInCollectorId,
-          });
+  //         console.log("🔍 Withdrawal filtering:", {
+  //           withdrawalId: withdrawal._id,
+  //           accountCollectorId,
+  //           loggedInCollectorId,
+  //           matches: accountCollectorId === loggedInCollectorId,
+  //         });
 
-          return accountCollectorId === loggedInCollectorId;
-        });
+  //         return accountCollectorId === loggedInCollectorId;
+  //       });
 
-        console.log(
-          "✅ Filtered withdrawals for collector:",
-          collectorWithdrawals.length
-        );
+  //       console.log(
+  //         "✅ Filtered withdrawals for collector:",
+  //         collectorWithdrawals.length
+  //       );
 
-        // Transform API data to match our component structure
-        const withdrawalsData = collectorWithdrawals.map((withdrawal) => {
-          // Extract customer information from different possible paths
-          const customerInfo =
-            withdrawal.customerId || withdrawal.customer || {};
-          const accountInfo = withdrawal.accountId || withdrawal.account || {};
+  //       // Transform API data to match our component structure
+  //       const withdrawalsData = collectorWithdrawals.map((withdrawal) => {
+  //         // Extract customer information from different possible paths
+  //         const customerInfo =
+  //           withdrawal.customerId || withdrawal.customer || {};
+  //         const accountInfo = withdrawal.accountId || withdrawal.account || {};
 
-          return {
-            id: withdrawal._id,
-            customerName: customerInfo.name || "N/A",
-            customerId: customerInfo._id || withdrawal.customerId || "N/A",
-            accountNumber:
-              withdrawal.accountNumber || accountInfo.accountNumber || "N/A",
-            amount: withdrawal.amount,
-            reason: withdrawal.reason || "Not specified",
-            status: withdrawal.status,
-            requestDate: withdrawal.date || withdrawal.createdAt,
-            customerPhone: customerInfo.phone || "N/A",
-            currentBalance:
-              accountInfo.currentBalance || withdrawal.currentBalance || 0,
-            accountType: accountInfo.type || "N/A",
-            // Additional fields from API
-            _id: withdrawal._id,
-            collectorId: withdrawal.collectorId,
-            approvedBy: withdrawal.approvedBy,
-            approvedAt: withdrawal.approvedAt,
-            rejectedBy: withdrawal.rejectedBy,
-            rejectedAt: withdrawal.rejectedAt,
-            rejectionReason: withdrawal.rejectionReason,
-            referenceNumber: withdrawal.referenceNumber,
-            // Store the account collector ID for filtering
-            accountCollectorId:
-              accountInfo.collectorId?._id ||
-              accountInfo.collectorId ||
-              withdrawal.collectorId?._id ||
-              withdrawal.collectorId,
-          };
-        });
+  //         return {
+  //           id: withdrawal._id,
+  //           customerName: customerInfo.name || "N/A",
+  //           customerId: customerInfo._id || withdrawal.customerId || "N/A",
+  //           accountNumber:
+  //             withdrawal.accountNumber || accountInfo.accountNumber || "N/A",
+  //           amount: withdrawal.amount,
+  //           reason: withdrawal.reason || "Not specified",
+  //           status: withdrawal.status,
+  //           requestDate: withdrawal.date || withdrawal.createdAt,
+  //           customerPhone: customerInfo.phone || "N/A",
+  //           currentBalance:
+  //             accountInfo.currentBalance || withdrawal.currentBalance || 0,
+  //           accountType: accountInfo.type || "N/A",
+  //           // Additional fields from API
+  //           _id: withdrawal._id,
+  //           collectorId: withdrawal.collectorId,
+  //           approvedBy: withdrawal.approvedBy,
+  //           approvedAt: withdrawal.approvedAt,
+  //           rejectedBy: withdrawal.rejectedBy,
+  //           rejectedAt: withdrawal.rejectedAt,
+  //           rejectionReason: withdrawal.rejectionReason,
+  //           referenceNumber: withdrawal.referenceNumber,
+  //           // Store the account collector ID for filtering
+  //           accountCollectorId:
+  //             accountInfo.collectorId?._id ||
+  //             accountInfo.collectorId ||
+  //             withdrawal.collectorId?._id ||
+  //             withdrawal.collectorId,
+  //         };
+  //       });
 
-        setWithdrawals(withdrawalsData);
-        console.log("🎉 Final withdrawals data:", withdrawalsData);
-      } else {
-        throw new Error(response.data.message || "Failed to load withdrawals");
+  //       setWithdrawals(withdrawalsData);
+  //       console.log("🎉 Final withdrawals data:", withdrawalsData);
+  //     } else {
+  //       throw new Error(response.data.message || "Failed to load withdrawals");
+  //     }
+  //   } catch (error) {
+  //     console.error("❌ Error loading withdrawals:", error);
+  //     setError(
+  //       error.response?.data?.message || "Failed to load withdrawal requests"
+  //     );
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+// Load pending withdrawals for this collector's customers only
+const loadWithdrawals = async () => {
+  try {
+    setLoading(true);
+    setError("");
+    console.log(
+      "🔄 Loading withdrawals for collector:",
+      collectorData._id,
+      collectorData.name
+    );
+
+    const response = await getPendingWithdrawals();
+    console.log("📊 API Response:", response.data);
+
+    if (response.data.success) {
+      // Get all withdrawals from response
+      const allWithdrawals = response.data.data || [];
+      console.log("📦 All withdrawals from API:", allWithdrawals.length);
+
+      if (allWithdrawals.length === 0) {
+        console.log("❌ No withdrawals found in API response");
+        setWithdrawals([]);
+        return;
       }
-    } catch (error) {
-      console.error("❌ Error loading withdrawals:", error);
-      setError(
-        error.response?.data?.message || "Failed to load withdrawal requests"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
 
+      // Debug: Log the first withdrawal to see its structure
+      console.log("🔍 First withdrawal structure:", allWithdrawals[0]);
+      console.log("🔍 First withdrawal remarks:", allWithdrawals[0].remarks);
+
+      // Filter withdrawals to only show those from this collector's customers
+      const collectorWithdrawals = allWithdrawals.filter((withdrawal) => {
+        // Try different possible paths for collectorId
+        const accountCollectorId =
+          withdrawal.accountId?.collectorId?._id ||
+          withdrawal.accountId?.collectorId ||
+          withdrawal.collectorId?._id ||
+          withdrawal.collectorId ||
+          withdrawal.account?.collectorId?._id ||
+          withdrawal.account?.collectorId;
+
+        const loggedInCollectorId = collectorData._id;
+
+        console.log("🔍 Withdrawal filtering:", {
+          withdrawalId: withdrawal._id,
+          accountCollectorId,
+          loggedInCollectorId,
+          matches: accountCollectorId === loggedInCollectorId,
+        });
+
+        return accountCollectorId === loggedInCollectorId;
+      });
+
+      console.log(
+        "✅ Filtered withdrawals for collector:",
+        collectorWithdrawals.length
+      );
+
+      // Transform API data to match our component structure
+      const withdrawalsData = collectorWithdrawals.map((withdrawal) => {
+        // Extract customer information from different possible paths
+        const customerInfo =
+          withdrawal.customerId || withdrawal.customer || {};
+        const accountInfo = withdrawal.accountId || withdrawal.account || {};
+
+        // ✅ CORRECTED: Use 'remarks' field instead of 'reason'
+        const withdrawalReason = 
+          withdrawal.remarks || 
+          withdrawal.reason || 
+          "Not specified";
+
+        console.log("💰 Withdrawal reason extraction:", {
+          withdrawalId: withdrawal._id,
+          remarks: withdrawal.remarks,
+          reason: withdrawal.reason,
+          finalReason: withdrawalReason
+        });
+
+        return {
+          id: withdrawal._id,
+          customerName: customerInfo.name || "N/A",
+          customerId: customerInfo._id || withdrawal.customerId || "N/A",
+          accountNumber:
+            withdrawal.accountNumber || accountInfo.accountNumber || "N/A",
+          amount: withdrawal.amount,
+          reason: withdrawalReason, // ✅ Now using the correct 'remarks' field
+          status: withdrawal.status,
+          requestDate: withdrawal.date || withdrawal.createdAt,
+          customerPhone: customerInfo.phone || "N/A",
+          currentBalance:
+            accountInfo.currentBalance || withdrawal.currentBalance || 0,
+          accountType: accountInfo.type || "N/A",
+          // Additional fields from API
+          _id: withdrawal._id,
+          collectorId: withdrawal.collectorId,
+          approvedBy: withdrawal.approvedBy,
+          approvedAt: withdrawal.approvedAt,
+          rejectedBy: withdrawal.rejectedBy,
+          rejectedAt: withdrawal.rejectedAt,
+          rejectionReason: withdrawal.rejectionReason,
+          referenceNumber: withdrawal.referenceNumber,
+          // Store the account collector ID for filtering
+          accountCollectorId:
+            accountInfo.collectorId?._id ||
+            accountInfo.collectorId ||
+            withdrawal.collectorId?._id ||
+            withdrawal.collectorId,
+        };
+      });
+
+      setWithdrawals(withdrawalsData);
+      console.log("🎉 Final withdrawals data:", withdrawalsData);
+    } else {
+      throw new Error(response.data.message || "Failed to load withdrawals");
+    }
+  } catch (error) {
+    console.error("❌ Error loading withdrawals:", error);
+    setError(
+      error.response?.data?.message || "Failed to load withdrawal requests"
+    );
+  } finally {
+    setLoading(false);
+  }
+};
   useEffect(() => {
     loadWithdrawals();
   }, []);
@@ -483,51 +606,7 @@ const CollectorWithdrawals = () => {
         </div> */}
 
         {/* Search and Filter */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/60 p-6 mb-8">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div className="flex-1 max-w-2xl">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search by customer name, account number, or customer ID..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white/50"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2 bg-gray-100 px-3 py-2 rounded-lg">
-                <Filter className="h-4 w-4 text-gray-600" />
-                <span className="text-sm text-gray-700">Status:</span>
-              </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="border border-gray-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="all">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-              </select>
-
-              <div className="text-sm text-gray-600">
-                Showing{" "}
-                <span className="font-semibold text-gray-900">
-                  {filteredWithdrawals.length}
-                </span>{" "}
-                of{" "}
-                <span className="font-semibold text-gray-900">
-                  {withdrawals.length}
-                </span>{" "}
-                requests
-              </div>
-            </div>
-          </div>
-        </div>
+        
 
         {/* Withdrawals Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -922,7 +1001,7 @@ const CollectorWithdrawals = () => {
           </div>
         </div>
       )}
-      <Footer />
+     <FooterCollector/>
     </div>
   );
 };

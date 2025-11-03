@@ -23,6 +23,7 @@ import {
 import axios from "axios";
 import Footer from "../components/Footer";
 import NavbarCollector from "./NavbarCollector";
+import FooterCollector from "./FooterCollector";
 
 const CollectorDashboard = () => {
   const navigate = useNavigate();
@@ -286,7 +287,7 @@ const CollectorDashboard = () => {
       </header> */}
       <NavbarCollector />
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8 -mt-6 relative z-10">
+      <main className="container mx-auto px-4 py-8 -mt-6 relative z-10 mt-3.5">
         {/* Welcome Section */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 mb-8 relative overflow-hidden">
           <div className="relative z-10">
@@ -317,35 +318,7 @@ const CollectorDashboard = () => {
             Quick Actions
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <button
-              onClick={openFeedbackModal}
-              className="p-6 border border-gray-200 rounded-xl hover:shadow-lg hover:border-blue-300 text-left transition-all duration-300 group bg-gradient-to-br from-white to-blue-50"
-            >
-              <div className="flex items-center mb-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mr-3 group-hover:scale-110 transition-transform duration-300">
-                  <Send className="h-6 w-6 text-white" />
-                </div>
-                <h3 className="font-semibold text-gray-900">Send Feedback</h3>
-              </div>
-              <p className="text-sm text-gray-600">
-                Share your feedback with admin
-              </p>
-            </button>
-
-            <button
-              onClick={openViewFeedbackModal}
-              className="p-6 border border-gray-200 rounded-xl hover:shadow-lg hover:border-green-300 text-left transition-all duration-300 group bg-gradient-to-br from-white to-green-50"
-            >
-              <div className="flex items-center mb-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center mr-3 group-hover:scale-110 transition-transform duration-300">
-                  <FileText className="h-6 w-6 text-white" />
-                </div>
-                <h3 className="font-semibold text-gray-900">View Responses</h3>
-              </div>
-              <p className="text-sm text-gray-600">
-                Check admin responses ({feedbackWithAdminNotes})
-              </p>
-            </button>
+           
 
             <button
               onClick={() => navigate("/collector/customers")}
@@ -400,6 +373,35 @@ const CollectorDashboard = () => {
                 <h3 className="font-semibold text-gray-900">Profile</h3>
               </div>
               <p className="text-sm text-gray-600">Update my profile</p>
+            </button>
+             <button
+              onClick={openFeedbackModal}
+              className="p-6 border border-gray-200 rounded-xl hover:shadow-lg hover:border-blue-300 text-left transition-all duration-300 group bg-gradient-to-br from-white to-blue-50"
+            >
+              <div className="flex items-center mb-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mr-3 group-hover:scale-110 transition-transform duration-300">
+                  <Send className="h-6 w-6 text-white" />
+                </div>
+                <h3 className="font-semibold text-gray-900">Send Feedback</h3>
+              </div>
+              <p className="text-sm text-gray-600">
+                Share your feedback with admin
+              </p>
+            </button>
+
+            <button
+              onClick={openViewFeedbackModal}
+              className="p-6 border border-gray-200 rounded-xl hover:shadow-lg hover:border-green-300 text-left transition-all duration-300 group bg-gradient-to-br from-white to-green-50"
+            >
+              <div className="flex items-center mb-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center mr-3 group-hover:scale-110 transition-transform duration-300">
+                  <FileText className="h-6 w-6 text-white" />
+                </div>
+                <h3 className="font-semibold text-gray-900">View Responses</h3>
+              </div>
+              <p className="text-sm text-gray-600">
+                Check admin responses ({feedbackWithAdminNotes})
+              </p>
             </button>
           </div>
         </div>
@@ -719,7 +721,7 @@ const CollectorDashboard = () => {
           </div>
         </div>
       )}
-      <Footer />
+      <FooterCollector/>
     </div>
   );
 };

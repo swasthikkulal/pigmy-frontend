@@ -13,7 +13,7 @@ const Footer = () => {
   };
 
   return (
-    <footer className="bg-gradient-to-r from-gray-900 to-blue-900 text-white py-12 mt-16">
+    <footer className="bg-gradient-to-r from-gray-900 to-blue-900 text-white py-12 mx-[-1.3rem] mt-16 w-screen mr-2">
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
@@ -37,7 +37,7 @@ const Footer = () => {
               <button onClick={() => navigate("/feedback")} className="block text-gray-300 hover:text-white transition-colors text-left">Support & Feedback</button>
             </div>
           </div>
-          <div>
+          {/* <div>
             <h3 className="text-lg font-semibold mb-4">Services</h3>
             <div className="space-y-3 text-gray-300">
               <div>Daily Savings</div>
@@ -45,7 +45,7 @@ const Footer = () => {
               <div>Loan Services</div>
               <div>Investment Plans</div>
             </div>
-          </div>
+          </div> */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Contact Info</h3>
             <div className="space-y-3 text-gray-300">

@@ -33,6 +33,12 @@ const Withdrawal = () => {
     accountId: "",
   });
 
+   useEffect(() => {
+ const token = localStorage.getItem("customerToken");
+ if (!token) {
+    navigate("/auth");
+  }
+ }, [])
   // Fetch withdrawal data
   const fetchWithdrawals = async () => {
     try {
@@ -446,7 +452,7 @@ const Withdrawal = () => {
               return (
                 <div
                   key={withdrawal._id}
-                  className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200"
+                  className="bg-white rounded-xl p-3 shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200"
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div className="flex-1">

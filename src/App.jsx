@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import PigmyXpressDashboard from "./components/PigmyXpressDashboard";
 import PaymentPage from "./components/PaymentPage";
 import AccountsPage from "./components/AccountsPage";
-import Withdrawal from "./components/withDrawal";
+import Withdrawal from "./components/Withdrawal";
 import Feedback from "./components/Feedback";
 import CustomerLogin from "./components/CustomerLogin";
 

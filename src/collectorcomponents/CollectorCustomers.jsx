@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavbarCollector from "./NavbarCollector";
 import Footer from "../components/Footer";
+import FooterCollector from "./FooterCollector";
 
 const CollectorCustomers = () => {
   const [customers, setCustomers] = useState([]);
@@ -471,7 +472,7 @@ const CollectorCustomers = () => {
           </div>
         </div>
       )}
-      <Footer />
+     <FooterCollector/>
     </div>
   );
 };

@@ -19,6 +19,7 @@ import {
   Shield,
   Target,
 } from "lucide-react";
+import Navbar from "./Navbar";
 
 // Import images (you'll need to add these images to your project)
 // For now, I'll use placeholder images from Unsplash with piggy bank/savings theme
@@ -52,6 +53,12 @@ const PigmyXpressDashboard = () => {
       "https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80",
   };
 
+ useEffect(() => {
+ const token = localStorage.getItem("customerToken");
+ if (!token) {
+    navigate("/auth");
+  }
+ }, [])
  
 
   // Fetch transactions from API
@@ -414,7 +421,7 @@ const PigmyXpressDashboard = () => {
           return (
             <div
               key={transformed.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-lg transition-all duration-300 group hover:border-blue-200"
+              className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 hover:shadow-lg transition-all duration-300 group hover:border-blue-200"
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
@@ -533,21 +540,21 @@ const PigmyXpressDashboard = () => {
             <option value="failed">Failed</option>
           </select>
         </div>
-        <button
+        {/* <button
           onClick={onExport}
           className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-3 rounded-lg transition-all duration-300 flex items-center gap-2 font-semibold shadow-lg hover:shadow-xl"
         >
           <ArrowDownToLine className="h-5 w-5" />
           Export
-        </button>
+        </button> */}
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen w-screen mx-[-9.7rem] mt-[-32px] bg-gradient-to-br from-gray-50 to-blue-50">
+    <div className="min-h-screen w-screen mx-[-9rem] mt-[-32px] bg-gradient-to-br from-gray-50 to-blue-50">
       {/* Enhanced Header with Background Image */}
-      <header className="relative bg-gradient-to-r from-blue-600 to-blue-800 shadow-2xl overflow-hidden">
+      {/* <header className="relative bg-gradient-to-r from-blue-600 to-blue-800 shadow-2xl overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center opacity-20"
           style={{ backgroundImage: `url(${images.headerBg})` }}
@@ -585,8 +592,8 @@ const PigmyXpressDashboard = () => {
             </div>
           </div>
         </div>
-      </header>
-
+      </header> */}
+<Navbar/>
       <main className="container mx-auto px-4 py-8 -mt-6 relative z-50">
         {/* Welcome Section with Card Design */}
 
@@ -719,8 +726,8 @@ const PigmyXpressDashboard = () => {
 
       {/* Enhanced Footer */}
       <footer className="bg-gradient-to-r from-gray-900 to-blue-900 text-white py-12 mt-16">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="container  px-4 mx-70">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-[15%] ">
             <div>
               <div className="flex items-center gap-3 mb-4">
                 <div className="bg-white/20 p-2 rounded-xl">
@@ -762,15 +769,7 @@ const PigmyXpressDashboard = () => {
                 </button>
               </div>
             </div>
-            <div>
-              <h3 className="text-lg font-semibold mb-4">Services</h3>
-              <div className="space-y-3 text-gray-300">
-                <div>Daily Savings</div>
-                <div>Fixed Deposits</div>
-                <div>Loan Services</div>
-                <div>Investment Plans</div>
-              </div>
-            </div>
+            
             <div>
               <h3 className="text-lg font-semibold mb-4">Contact Info</h3>
               <div className="space-y-3 text-gray-300">

@@ -69,11 +69,21 @@ const AccountsPage = () => {
     setPaidPeriodsMap(storedPaidPeriods);
   }, []);
 
+  useEffect(() => {
+    const token = localStorage.getItem("customerToken");
+    if (!token) {
+      navigate("/auth");
+    }
+  }, []);
+  useEffect(() => {
+    console.log("🔄 Pending payments updated:", pendingPayments);
+  }, [pendingPayments]);
+
   // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       loadCustomerAccounts();
-    }, 30000);
+    }, 120000);
 
     return () => clearInterval(interval);
   }, []);
@@ -168,13 +178,25 @@ const AccountsPage = () => {
     return Math.max(0, balance); // Ensure balance doesn't go negative
   };
 
-  const calculateMaturityAmount = (account) => {
+  const calculateMaturityAmount = (account, includeInterest = true) => {
     const dailyAmount = account.dailyAmount || 0;
     const duration = account.duration || account.planId?.duration || 0;
     const interestRate =
       account.planId?.interestRate || account.interestRate || 0;
 
     const totalPrincipal = dailyAmount * duration;
+
+    if (!includeInterest) {
+      // For progress calculation, return only principal amount
+      return {
+        principalAmount: totalPrincipal,
+        interestAmount: 0,
+        maturityAmount: totalPrincipal,
+        interestRate,
+      };
+    }
+
+    // For display purposes, include interest
     const interestAmount = (totalPrincipal * interestRate) / 100;
     const maturityAmount = totalPrincipal + interestAmount;
 
@@ -186,7 +208,6 @@ const AccountsPage = () => {
     };
   };
 
-  // FIXED: Enhanced function to check if today's payment requirement is fulfilled
   const checkIfTodayPaid = (account, planType, transactions, missedPeriods) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -274,7 +295,1059 @@ const AccountsPage = () => {
     }
   };
 
-  // FIXED: Enhanced pending payment calculation with proper full amount calculation
+  // const calculatePendingPayments = (accountsData) => {
+  //   const pending = {};
+  //   const today = new Date();
+  //   today.setHours(23, 59, 59, 999);
+
+  //   const storedPaidPeriods = JSON.parse(
+  //     localStorage.getItem("paidPeriods") || "{}"
+  //   );
+
+  //   accountsData.forEach((account) => {
+  //     console.log(`\n🔄 Calculating pending for account: ${account.accountNumber}`);
+
+  //     const accountPaidPeriods = storedPaidPeriods[account._id] || [];
+  //     const paidPeriodIds = new Set(accountPaidPeriods.map((p) => p.periodId));
+
+  //     const planType = getPlanTypeFromAccount(account);
+  //     const transactions = account.transactions || [];
+  //     const openingDate = new Date(account.openingDate || account.startDate);
+  //     openingDate.setHours(0, 0, 0, 0);
+
+  //     const dailyAmount = account.dailyAmount || 0;
+  //     const duration = account.duration || account.planId?.duration || 0;
+
+  //     // FIXED: Use principal-only maturity calculation for progress
+  //     const progressMaturityCalculation = calculateMaturityAmount(account, false);
+  //     const displayMaturityCalculation = calculateMaturityAmount(account, true);
+
+  //     const progressMaturityAmount = progressMaturityCalculation.maturityAmount;
+  //     const displayMaturityAmount = displayMaturityCalculation.maturityAmount;
+  //     const principalAmount = progressMaturityCalculation.principalAmount;
+  //     const interestAmount = displayMaturityCalculation.interestAmount;
+
+  //     // ✅ FIXED: Use account.totalBalance for totalPaidAmount
+  //     const totalPaidAmount = account.totalBalance || 0;
+
+  //     // FIXED: Calculate remaining amount based on principal-only for progress
+  //     let remainingMaturityAmount = Math.max(0, progressMaturityAmount - totalPaidAmount);
+  //     const missedPeriods = [];
+
+  //     // If maturity reached, no pending payments
+  //     if (totalPaidAmount >= progressMaturityAmount) {
+  //       pending[account._id] = {
+  //         amount: 0,
+  //         count: 0,
+  //         hasPending: false,
+  //         maturityAmount: displayMaturityAmount,
+  //         progressMaturityAmount: progressMaturityAmount,
+  //         principalAmount,
+  //         interestAmount,
+  //         totalPaidAmount,
+  //         remainingMaturityAmount: 0,
+  //         isMaturityReached: true,
+  //         missedPeriods: [],
+  //         pendingDays: 0,
+  //         maturityCalculation: displayMaturityCalculation,
+  //         progressMaturityCalculation: progressMaturityCalculation,
+  //         hasPaidToday: true,
+  //         fullPendingAmount: 0,
+  //       };
+  //       return;
+  //     }
+
+  //     let pendingAmount = 0;
+  //     let pendingCount = 0;
+  //     let fullPendingAmount = 0;
+
+  //     // FIXED: Calculate pending periods based on plan type - ONLY UP TO TODAY
+  //     if (planType === "daily") {
+  //       const checkDate = new Date(openingDate);
+  //       let dayCount = 0;
+  //       const processedDates = new Set();
+
+  //       // Only check dates up to today (not future dates)
+  //       while (checkDate <= today && dayCount < duration) {
+  //         const dateKey = checkDate.toISOString().split("T")[0];
+  //         const periodId = `day-${dateKey}`;
+
+  //         if (processedDates.has(dateKey)) {
+  //           checkDate.setDate(checkDate.getDate() + 1);
+  //           dayCount++;
+  //           continue;
+  //         }
+
+  //         processedDates.add(dateKey);
+
+  //         const hasTransactionForDate = transactions.some((transaction) => {
+  //           if (!transaction.date) return false;
+  //           const transactionDate = new Date(transaction.date);
+  //           const transactionDateKey = transactionDate
+  //             .toISOString()
+  //             .split("T")[0];
+  //           return (
+  //             transactionDateKey === dateKey &&
+  //             (transaction.status === "completed" ||
+  //               transaction.status === "verified")
+  //           );
+  //         });
+
+  //         const isPeriodPaid = paidPeriodIds.has(periodId);
+
+  //         // Track all pending periods for full amount calculation
+  //         if (!hasTransactionForDate && !isPeriodPaid) {
+  //           fullPendingAmount += dailyAmount;
+  //           missedPeriods.push({
+  //             date: new Date(checkDate),
+  //             amount: dailyAmount,
+  //             type: "day",
+  //             periodId: periodId,
+  //           });
+  //         }
+
+  //         checkDate.setDate(checkDate.getDate() + 1);
+  //         dayCount++;
+  //       }
+
+  //       // For daily plans, pending amount equals full pending amount
+  //       pendingAmount = fullPendingAmount;
+  //       pendingCount = missedPeriods.length;
+
+  //     } else if (planType === "weekly") {
+  //       // FIXED: Weekly plan calculation - only up to current week
+  //       const checkDate = new Date(openingDate);
+  //       let weekCount = 0;
+  //       const processedWeeks = new Set();
+
+  //       // Only check weeks up to current week (not future weeks)
+  //       while (checkDate <= today && weekCount < duration) {
+  //         const weekStart = new Date(checkDate);
+  //         const weekEnd = new Date(checkDate);
+  //         weekEnd.setDate(weekEnd.getDate() + 6); // Week ends 6 days later
+
+  //         const weekKey = `week-${weekStart.toISOString().split("T")[0]}`;
+  //         const periodId = weekKey;
+
+  //         if (processedWeeks.has(weekKey)) {
+  //           checkDate.setDate(checkDate.getDate() + 7);
+  //           weekCount++;
+  //           continue;
+  //         }
+
+  //         processedWeeks.add(weekKey);
+
+  //         // Check if there's any transaction in this week
+  //         const hasTransactionForWeek = transactions.some((transaction) => {
+  //           if (!transaction.date) return false;
+  //           const transactionDate = new Date(transaction.date);
+  //           return (
+  //             transactionDate >= weekStart &&
+  //             transactionDate <= weekEnd &&
+  //             (transaction.status === "completed" ||
+  //               transaction.status === "verified")
+  //           );
+  //         });
+
+  //         const isPeriodPaid = paidPeriodIds.has(periodId);
+
+  //         // Track all pending periods for full amount calculation
+  //         if (!hasTransactionForWeek && !isPeriodPaid) {
+  //           fullPendingAmount += dailyAmount;
+  //           missedPeriods.push({
+  //             date: new Date(weekStart),
+  //             amount: dailyAmount,
+  //             type: "week",
+  //             periodId: periodId,
+  //             weekStart: new Date(weekStart),
+  //             weekEnd: new Date(weekEnd),
+  //           });
+  //         }
+
+  //         checkDate.setDate(checkDate.getDate() + 7);
+  //         weekCount++;
+  //       }
+
+  //       // For weekly plans, pending amount equals full pending amount
+  //       pendingAmount = fullPendingAmount;
+  //       pendingCount = missedPeriods.length;
+
+  //     } else if (planType === "monthly") {
+  //       // Monthly plan calculation - only up to current month
+  //       const checkDate = new Date(openingDate);
+  //       let monthCount = 0;
+  //       const processedMonths = new Set();
+
+  //       // Only check months up to current month (not future months)
+  //       while (checkDate <= today && monthCount < duration) {
+  //         const monthStart = new Date(
+  //           checkDate.getFullYear(),
+  //           checkDate.getMonth(),
+  //           1
+  //         );
+  //         const monthEnd = new Date(
+  //           checkDate.getFullYear(),
+  //           checkDate.getMonth() + 1,
+  //           0
+  //         );
+  //         monthEnd.setHours(23, 59, 59, 999);
+
+  //         const monthKey = `month-${monthStart.getFullYear()}-${
+  //           monthStart.getMonth() + 1
+  //         }`;
+  //         const periodId = monthKey;
+
+  //         if (processedMonths.has(monthKey)) {
+  //           checkDate.setMonth(checkDate.getMonth() + 1);
+  //           monthCount++;
+  //           continue;
+  //         }
+
+  //         processedMonths.add(monthKey);
+
+  //         // Check if there's any transaction in this month
+  //         const hasTransactionForMonth = transactions.some((transaction) => {
+  //           if (!transaction.date) return false;
+  //           const transactionDate = new Date(transaction.date);
+  //           return (
+  //             transactionDate >= monthStart &&
+  //             transactionDate <= monthEnd &&
+  //             (transaction.status === "completed" ||
+  //               transaction.status === "verified")
+  //           );
+  //         });
+
+  //         const isPeriodPaid = paidPeriodIds.has(periodId);
+
+  //         // Track all pending periods for full amount calculation
+  //         if (!hasTransactionForMonth && !isPeriodPaid) {
+  //           fullPendingAmount += dailyAmount;
+  //           missedPeriods.push({
+  //             date: new Date(monthStart),
+  //             amount: dailyAmount,
+  //             type: "month",
+  //             periodId: periodId,
+  //             monthStart: new Date(monthStart),
+  //             monthEnd: new Date(monthEnd),
+  //           });
+  //         }
+
+  //         checkDate.setMonth(checkDate.getMonth() + 1);
+  //         monthCount++;
+  //       }
+
+  //       // For monthly plans, pending amount equals full pending amount
+  //       pendingAmount = fullPendingAmount;
+  //       pendingCount = missedPeriods.length;
+  //     }
+
+  //     // ✅ FIXED: Calculate additional pending periods due to withdrawals
+  //     let additionalPendingFromWithdrawals = 0;
+
+  //     // Calculate total withdrawals that affect the balance
+  //     const totalWithdrawals = transactions.reduce((sum, transaction) => {
+  //       if (transaction.type === "withdrawal" &&
+  //           (transaction.status === "completed" ||
+  //            transaction.status === "approved" ||
+  //            transaction.status === "verified")) {
+  //         return sum + (transaction.amount || 0);
+  //       }
+  //       return sum;
+  //     }, 0);
+
+  //     console.log("💰 Withdrawal Analysis:");
+  //     console.log("- Total Withdrawals:", totalWithdrawals);
+  //     console.log("- Daily Amount:", dailyAmount);
+
+  //     // Convert withdrawal amount to equivalent number of periods
+  //     if (dailyAmount > 0 && totalWithdrawals > 0) {
+  //       additionalPendingFromWithdrawals = Math.ceil(totalWithdrawals / dailyAmount);
+  //       console.log("- Additional Periods from Withdrawals:", additionalPendingFromWithdrawals);
+  //     } else {
+  //       console.log("- No additional periods from withdrawals");
+  //     }
+
+  //     // ✅ FIXED: Total pending count = missed periods + additional periods from withdrawals
+  //     const totalPendingCount = pendingCount + additionalPendingFromWithdrawals;
+
+  //     console.log("📊 Pending Summary:");
+  //     console.log("- Missed Periods Count:", pendingCount);
+  //     console.log("- Additional from Withdrawals:", additionalPendingFromWithdrawals);
+  //     console.log("- Total Pending Count:", totalPendingCount);
+
+  //     // ✅ FIXED: Calculate pending days based on remaining maturity amount (principal-only)
+  //     const pendingDays = calculatePendingDays(
+  //       account,
+  //       remainingMaturityAmount,
+  //       planType
+  //     );
+
+  //     // FIXED: Check if today's payment requirement is fulfilled (no pending for today)
+  //     const hasPaidToday = checkIfTodayPaid(
+  //       account,
+  //       planType,
+  //       transactions,
+  //       missedPeriods
+  //     );
+
+  //     // ✅ FIXED: The key issue - hasPending should be true if there are pending days OR missed periods OR withdrawals
+  //     const hasPendingPayments = remainingMaturityAmount > 0 || missedPeriods.length > 0 || additionalPendingFromWithdrawals > 0;
+
+  //     pending[account._id] = {
+  //       amount: pendingAmount,
+  //       count: totalPendingCount, // ✅ FIXED: Use total pending count (missed periods + withdrawal periods)
+  //       hasPending: hasPendingPayments,
+  //       maturityAmount: displayMaturityAmount,
+  //       progressMaturityAmount: progressMaturityAmount,
+  //       principalAmount,
+  //       interestAmount,
+  //       totalPaidAmount,
+  //       remainingMaturityAmount,
+  //       isMaturityReached: totalPaidAmount >= progressMaturityAmount,
+  //       missedPeriods,
+  //       pendingDays,
+  //       maturityCalculation: displayMaturityCalculation,
+  //       progressMaturityCalculation: progressMaturityCalculation,
+  //       planType: planType,
+  //       hasPaidToday: hasPaidToday,
+  //       fullPendingAmount: fullPendingAmount,
+  //       // ✅ ADDED: For debugging and display
+  //       additionalPendingFromWithdrawals: additionalPendingFromWithdrawals,
+  //       totalWithdrawals: totalWithdrawals,
+  //     };
+
+  //     console.log(`📊 Account ${account.accountNumber} Final Pending Calculation:`, {
+  //       totalBalance: account.totalBalance,
+  //       totalPaidAmount: totalPaidAmount,
+  //       progressMaturityAmount: progressMaturityAmount,
+  //       remainingMaturityAmount: remainingMaturityAmount,
+  //       pendingAmount: pendingAmount,
+  //       fullPendingAmount: fullPendingAmount,
+  //       pendingCount: pendingCount,
+  //       additionalPendingFromWithdrawals: additionalPendingFromWithdrawals,
+  //       totalPendingCount: totalPendingCount,
+  //       pendingDays: pendingDays,
+  //       hasPaidToday: hasPaidToday,
+  //       missedPeriodsCount: missedPeriods.length,
+  //       hasPending: hasPendingPayments,
+  //       totalWithdrawals: totalWithdrawals,
+  //       progress: ((totalPaidAmount / progressMaturityAmount) * 100).toFixed(1) + "%",
+  //     });
+  //   });
+
+  //   setPendingPayments(pending);
+  // };
+
+  // FIXED: Enhanced pending payment calculation with proper withdrawal impact
+  // const calculatePendingPayments = (accountsData) => {
+  //   const pending = {};
+  //   const today = new Date();
+  //   today.setHours(23, 59, 59, 999);
+
+  //   const storedPaidPeriods = JSON.parse(
+  //     localStorage.getItem("paidPeriods") || "{}"
+  //   );
+
+  //   accountsData.forEach((account) => {
+  //     console.log(
+  //       `\n🔄 Calculating pending for account: ${account.accountNumber}`
+  //     );
+
+  //     const accountPaidPeriods = storedPaidPeriods[account._id] || [];
+  //     const paidPeriodIds = new Set(accountPaidPeriods.map((p) => p.periodId));
+
+  //     const planType = getPlanTypeFromAccount(account);
+  //     const transactions = account.transactions || [];
+  //     const openingDate = new Date(account.openingDate || account.startDate);
+  //     openingDate.setHours(0, 0, 0, 0);
+
+  //     const dailyAmount = account.dailyAmount || 0;
+  //     const duration = account.duration || account.planId?.duration || 0;
+
+  //     // FIXED: Use principal-only maturity calculation for progress
+  //     const progressMaturityCalculation = calculateMaturityAmount(
+  //       account,
+  //       false
+  //     );
+  //     const displayMaturityCalculation = calculateMaturityAmount(account, true);
+
+  //     const progressMaturityAmount = progressMaturityCalculation.maturityAmount;
+  //     const displayMaturityAmount = displayMaturityCalculation.maturityAmount;
+  //     const principalAmount = progressMaturityCalculation.principalAmount;
+  //     const interestAmount = displayMaturityCalculation.interestAmount;
+
+  //     // ✅ FIXED: Use account.totalBalance for totalPaidAmount
+  //     const totalPaidAmount = account.totalBalance || 0;
+
+  //     // FIXED: Calculate remaining amount based on principal-only for progress
+  //     let remainingMaturityAmount = Math.max(
+  //       0,
+  //       progressMaturityAmount - totalPaidAmount
+  //     );
+  //     const missedPeriods = [];
+
+  //     // If maturity reached, no pending payments
+  //     if (totalPaidAmount >= progressMaturityAmount) {
+  //       pending[account._id] = {
+  //         amount: 0,
+  //         count: 0,
+  //         hasPending: false,
+  //         maturityAmount: displayMaturityAmount,
+  //         progressMaturityAmount: progressMaturityAmount,
+  //         principalAmount,
+  //         interestAmount,
+  //         totalPaidAmount,
+  //         remainingMaturityAmount: 0,
+  //         isMaturityReached: true,
+  //         missedPeriods: [],
+  //         pendingDays: 0,
+  //         maturityCalculation: displayMaturityCalculation,
+  //         progressMaturityCalculation: progressMaturityCalculation,
+  //         hasPaidToday: true,
+  //         fullPendingAmount: 0,
+  //       };
+  //       return;
+  //     }
+
+  //     let pendingAmount = 0;
+  //     let pendingCount = 0;
+  //     let fullPendingAmount = 0;
+
+  //     // ✅ FIXED: NEW LOGIC - Calculate expected amount based on days passed
+  //     let expectedAmount = 0;
+  //     let daysPassed = 0;
+
+  //     if (planType === "daily") {
+  //       // Calculate days between opening date and today
+  //       const timeDiff = today.getTime() - openingDate.getTime();
+  //       daysPassed = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1; // +1 to include both start and end dates
+  //       daysPassed = Math.min(daysPassed, duration); // Don't exceed plan duration
+
+  //       expectedAmount = daysPassed * dailyAmount;
+
+  //       console.log("📅 Daily Plan Calculation:");
+  //       console.log("- Opening Date:", openingDate.toDateString());
+  //       console.log("- Today:", today.toDateString());
+  //       console.log("- Days Passed:", daysPassed);
+  //       console.log("- Daily Amount:", dailyAmount);
+  //       console.log("- Expected Amount:", expectedAmount);
+  //       console.log("- Current Balance:", totalPaidAmount);
+
+  //       // Calculate pending count based on difference
+  //       const amountDifference = Math.max(0, expectedAmount - totalPaidAmount);
+  //       pendingCount = Math.ceil(amountDifference / dailyAmount);
+
+  //       console.log("- Amount Difference:", amountDifference);
+  //       console.log("- Pending Count:", pendingCount);
+
+  //       // Also calculate missed periods for historical tracking
+  //       const checkDate = new Date(openingDate);
+  //       let dayCount = 0;
+  //       const processedDates = new Set();
+
+  //       while (checkDate <= today && dayCount < duration) {
+  //         const dateKey = checkDate.toISOString().split("T")[0];
+  //         const periodId = `day-${dateKey}`;
+
+  //         if (processedDates.has(dateKey)) {
+  //           checkDate.setDate(checkDate.getDate() + 1);
+  //           dayCount++;
+  //           continue;
+  //         }
+
+  //         processedDates.add(dateKey);
+
+  //         const hasTransactionForDate = transactions.some((transaction) => {
+  //           if (!transaction.date) return false;
+  //           const transactionDate = new Date(transaction.date);
+  //           const transactionDateKey = transactionDate
+  //             .toISOString()
+  //             .split("T")[0];
+  //           return (
+  //             transactionDateKey === dateKey &&
+  //             (transaction.status === "completed" ||
+  //               transaction.status === "verified")
+  //           );
+  //         });
+
+  //         const isPeriodPaid = paidPeriodIds.has(periodId);
+
+  //         if (!hasTransactionForDate && !isPeriodPaid) {
+  //           fullPendingAmount += dailyAmount;
+  //           missedPeriods.push({
+  //             date: new Date(checkDate),
+  //             amount: dailyAmount,
+  //             type: "day",
+  //             periodId: periodId,
+  //           });
+  //         }
+
+  //         checkDate.setDate(checkDate.getDate() + 1);
+  //         dayCount++;
+  //       }
+
+  //       pendingAmount = fullPendingAmount;
+  //     } else if (planType === "weekly") {
+  //       // Weekly plan logic (similar approach but for weeks)
+  //       const checkDate = new Date(openingDate);
+  //       let weekCount = 0;
+  //       const processedWeeks = new Set();
+
+  //       while (checkDate <= today && weekCount < duration) {
+  //         const weekStart = new Date(checkDate);
+  //         const weekEnd = new Date(checkDate);
+  //         weekEnd.setDate(weekEnd.getDate() + 6);
+
+  //         const weekKey = `week-${weekStart.toISOString().split("T")[0]}`;
+  //         const periodId = weekKey;
+
+  //         if (processedWeeks.has(weekKey)) {
+  //           checkDate.setDate(checkDate.getDate() + 7);
+  //           weekCount++;
+  //           continue;
+  //         }
+
+  //         processedWeeks.add(weekKey);
+
+  //         const hasTransactionForWeek = transactions.some((transaction) => {
+  //           if (!transaction.date) return false;
+  //           const transactionDate = new Date(transaction.date);
+  //           return (
+  //             transactionDate >= weekStart &&
+  //             transactionDate <= weekEnd &&
+  //             (transaction.status === "completed" ||
+  //               transaction.status === "verified")
+  //           );
+  //         });
+
+  //         const isPeriodPaid = paidPeriodIds.has(periodId);
+
+  //         if (!hasTransactionForWeek && !isPeriodPaid) {
+  //           fullPendingAmount += dailyAmount;
+  //           missedPeriods.push({
+  //             date: new Date(weekStart),
+  //             amount: dailyAmount,
+  //             type: "week",
+  //             periodId: periodId,
+  //             weekStart: new Date(weekStart),
+  //             weekEnd: new Date(weekEnd),
+  //           });
+  //         }
+
+  //         checkDate.setDate(checkDate.getDate() + 7);
+  //         weekCount++;
+  //       }
+
+  //       // For weekly plans, calculate expected weeks
+  //       const timeDiff = today.getTime() - openingDate.getTime();
+  //       const weeksPassed = Math.ceil(timeDiff / (1000 * 3600 * 24 * 7));
+  //       expectedAmount = Math.min(weeksPassed, duration) * dailyAmount;
+
+  //       const amountDifference = Math.max(0, expectedAmount - totalPaidAmount);
+  //       pendingCount = Math.ceil(amountDifference / dailyAmount);
+
+  //       pendingAmount = fullPendingAmount;
+  //     } else if (planType === "monthly") {
+  //       // Monthly plan logic
+  //       const checkDate = new Date(openingDate);
+  //       let monthCount = 0;
+  //       const processedMonths = new Set();
+
+  //       while (checkDate <= today && monthCount < duration) {
+  //         const monthStart = new Date(
+  //           checkDate.getFullYear(),
+  //           checkDate.getMonth(),
+  //           1
+  //         );
+  //         const monthEnd = new Date(
+  //           checkDate.getFullYear(),
+  //           checkDate.getMonth() + 1,
+  //           0
+  //         );
+  //         monthEnd.setHours(23, 59, 59, 999);
+
+  //         const monthKey = `month-${monthStart.getFullYear()}-${
+  //           monthStart.getMonth() + 1
+  //         }`;
+  //         const periodId = monthKey;
+
+  //         if (processedMonths.has(monthKey)) {
+  //           checkDate.setMonth(checkDate.getMonth() + 1);
+  //           monthCount++;
+  //           continue;
+  //         }
+
+  //         processedMonths.add(monthKey);
+
+  //         const hasTransactionForMonth = transactions.some((transaction) => {
+  //           if (!transaction.date) return false;
+  //           const transactionDate = new Date(transaction.date);
+  //           return (
+  //             transactionDate >= monthStart &&
+  //             transactionDate <= monthEnd &&
+  //             (transaction.status === "completed" ||
+  //               transaction.status === "verified")
+  //           );
+  //         });
+
+  //         const isPeriodPaid = paidPeriodIds.has(periodId);
+
+  //         if (!hasTransactionForMonth && !isPeriodPaid) {
+  //           fullPendingAmount += dailyAmount;
+  //           missedPeriods.push({
+  //             date: new Date(monthStart),
+  //             amount: dailyAmount,
+  //             type: "month",
+  //             periodId: periodId,
+  //             monthStart: new Date(monthStart),
+  //             monthEnd: new Date(monthEnd),
+  //           });
+  //         }
+
+  //         checkDate.setMonth(checkDate.getMonth() + 1);
+  //         monthCount++;
+  //       }
+
+  //       // For monthly plans, calculate expected months
+  //       const monthsPassed =
+  //         (today.getFullYear() - openingDate.getFullYear()) * 12 +
+  //         (today.getMonth() - openingDate.getMonth());
+  //       expectedAmount = Math.min(monthsPassed + 1, duration) * dailyAmount;
+
+  //       const amountDifference = Math.max(0, expectedAmount - totalPaidAmount);
+  //       pendingCount = Math.ceil(amountDifference / dailyAmount);
+
+  //       pendingAmount = fullPendingAmount;
+  //     }
+
+  //     console.log("💰 Final Pending Calculation:");
+  //     console.log("- Expected Amount:", expectedAmount);
+  //     console.log("- Current Balance:", totalPaidAmount);
+  //     console.log("- Pending Count:", pendingCount);
+
+  //     // ✅ FIXED: Calculate pending days based on remaining maturity amount (principal-only)
+  //     const pendingDays = calculatePendingDays(
+  //       account,
+  //       remainingMaturityAmount,
+  //       planType
+  //     );
+
+  //     // FIXED: Check if today's payment requirement is fulfilled (no pending for today)
+  //     const hasPaidToday = checkIfTodayPaid(
+  //       account,
+  //       planType,
+  //       transactions,
+  //       missedPeriods
+  //     );
+
+  //     // ✅ FIXED: The key issue - hasPending should be true if there are pending days OR missed periods
+  //     const hasPendingPayments =
+  //       remainingMaturityAmount > 0 ||
+  //       missedPeriods.length > 0 ||
+  //       pendingCount > 0;
+
+  //     pending[account._id] = {
+  //       amount: pendingAmount,
+  //       count: pendingCount, // ✅ FIXED: Use calculated pending count
+  //       hasPending: hasPendingPayments,
+  //       maturityAmount: displayMaturityAmount,
+  //       progressMaturityAmount: progressMaturityAmount,
+  //       principalAmount,
+  //       interestAmount,
+  //       totalPaidAmount,
+  //       remainingMaturityAmount,
+  //       isMaturityReached: totalPaidAmount >= progressMaturityAmount,
+  //       missedPeriods,
+  //       pendingDays,
+  //       maturityCalculation: displayMaturityCalculation,
+  //       progressMaturityCalculation: progressMaturityCalculation,
+  //       planType: planType,
+  //       hasPaidToday: hasPaidToday,
+  //       fullPendingAmount: fullPendingAmount,
+  //       // ✅ ADDED: For debugging and display
+  //       expectedAmount: expectedAmount,
+  //       daysPassed: daysPassed,
+  //     };
+
+  //     console.log(
+  //       `📊 Account ${account.accountNumber} Final Pending Calculation:`,
+  //       {
+  //         totalBalance: account.totalBalance,
+  //         totalPaidAmount: totalPaidAmount,
+  //         expectedAmount: expectedAmount,
+  //         progressMaturityAmount: progressMaturityAmount,
+  //         remainingMaturityAmount: remainingMaturityAmount,
+  //         pendingAmount: pendingAmount,
+  //         fullPendingAmount: fullPendingAmount,
+  //         pendingCount: pendingCount,
+  //         pendingDays: pendingDays,
+  //         hasPaidToday: hasPaidToday,
+  //         missedPeriodsCount: missedPeriods.length,
+  //         hasPending: hasPendingPayments,
+  //         progress:
+  //           ((totalPaidAmount / progressMaturityAmount) * 100).toFixed(1) + "%",
+  //       }
+  //     );
+  //   });
+
+  //   setPendingPayments(pending);
+  // };
+  // FIXED: Enhanced pending payment calculation - removed extra count
+  // const calculatePendingPayments = (accountsData) => {
+  //   const pending = {};
+  //   const today = new Date();
+  //   today.setHours(23, 59, 59, 999);
+
+  //   const storedPaidPeriods = JSON.parse(
+  //     localStorage.getItem("paidPeriods") || "{}"
+  //   );
+
+  //   accountsData.forEach((account) => {
+  //     console.log(
+  //       `\n🔄 Calculating pending for account: ${account.accountNumber}`
+  //     );
+
+  //     const accountPaidPeriods = storedPaidPeriods[account._id] || [];
+  //     const paidPeriodIds = new Set(accountPaidPeriods.map((p) => p.periodId));
+
+  //     const planType = getPlanTypeFromAccount(account);
+  //     const transactions = account.transactions || [];
+  //     const openingDate = new Date(account.openingDate || account.startDate);
+  //     openingDate.setHours(0, 0, 0, 0);
+
+  //     const dailyAmount = account.dailyAmount || 0;
+  //     const duration = account.duration || account.planId?.duration || 0;
+
+  //     // FIXED: Use principal-only maturity calculation for progress
+  //     const progressMaturityCalculation = calculateMaturityAmount(
+  //       account,
+  //       false
+  //     );
+  //     const displayMaturityCalculation = calculateMaturityAmount(account, true);
+
+  //     const progressMaturityAmount = progressMaturityCalculation.maturityAmount;
+  //     const displayMaturityAmount = displayMaturityCalculation.maturityAmount;
+  //     const principalAmount = progressMaturityCalculation.principalAmount;
+  //     const interestAmount = displayMaturityCalculation.interestAmount;
+
+  //     // ✅ FIXED: Use account.totalBalance for totalPaidAmount
+  //     const totalPaidAmount = account.totalBalance || 0;
+
+  //     // FIXED: Calculate remaining amount based on principal-only for progress
+  //     let remainingMaturityAmount = Math.max(
+  //       0,
+  //       progressMaturityAmount - totalPaidAmount
+  //     );
+  //     const missedPeriods = [];
+
+  //     // If maturity reached, no pending payments
+  //     if (totalPaidAmount >= progressMaturityAmount) {
+  //       pending[account._id] = {
+  //         amount: 0,
+  //         count: 0,
+  //         hasPending: false,
+  //         maturityAmount: displayMaturityAmount,
+  //         progressMaturityAmount: progressMaturityAmount,
+  //         principalAmount,
+  //         interestAmount,
+  //         totalPaidAmount,
+  //         remainingMaturityAmount: 0,
+  //         isMaturityReached: true,
+  //         missedPeriods: [],
+  //         pendingDays: 0,
+  //         maturityCalculation: displayMaturityCalculation,
+  //         progressMaturityCalculation: progressMaturityCalculation,
+  //         hasPaidToday: true,
+  //         fullPendingAmount: 0,
+  //       };
+  //       return;
+  //     }
+
+  //     let pendingAmount = 0;
+  //     let pendingCount = 0;
+  //     let fullPendingAmount = 0;
+
+  //     // ✅ FIXED: NEW LOGIC - Calculate expected amount based on days passed
+  //     let expectedAmount = 0;
+  //     let daysPassed = 0;
+
+  //     if (planType === "daily") {
+  //       // FIXED: Calculate days between opening date and today WITHOUT the +1
+  //       const timeDiff = today.getTime() - openingDate.getTime();
+  //       daysPassed = Math.ceil(timeDiff / (1000 * 3600 * 24)); // REMOVED: +1 that was causing extra day
+  //       daysPassed = Math.min(daysPassed, duration); // Don't exceed plan duration
+
+  //       expectedAmount = daysPassed * dailyAmount;
+
+  //       console.log("📅 Daily Plan Calculation:");
+  //       console.log("- Opening Date:", openingDate.toDateString());
+  //       console.log("- Today:", today.toDateString());
+  //       console.log("- Days Passed:", daysPassed);
+  //       console.log("- Daily Amount:", dailyAmount);
+  //       console.log("- Expected Amount:", expectedAmount);
+  //       console.log("- Current Balance:", totalPaidAmount);
+
+  //       // Calculate pending count based on difference
+  //       const amountDifference = Math.max(0, expectedAmount - totalPaidAmount);
+  //       pendingCount = Math.ceil(amountDifference / dailyAmount);
+
+  //       console.log("- Amount Difference:", amountDifference);
+  //       console.log("- Pending Count:", pendingCount);
+
+  //       // Also calculate missed periods for historical tracking
+  //       const checkDate = new Date(openingDate);
+  //       let dayCount = 0;
+  //       const processedDates = new Set();
+
+  //       while (checkDate <= today && dayCount < duration) {
+  //         const dateKey = checkDate.toISOString().split("T")[0];
+  //         const periodId = `day-${dateKey}`;
+
+  //         if (processedDates.has(dateKey)) {
+  //           checkDate.setDate(checkDate.getDate() + 1);
+  //           dayCount++;
+  //           continue;
+  //         }
+
+  //         processedDates.add(dateKey);
+
+  //         const hasTransactionForDate = transactions.some((transaction) => {
+  //           if (!transaction.date) return false;
+  //           const transactionDate = new Date(transaction.date);
+  //           const transactionDateKey = transactionDate
+  //             .toISOString()
+  //             .split("T")[0];
+  //           return (
+  //             transactionDateKey === dateKey &&
+  //             (transaction.status === "completed" ||
+  //               transaction.status === "verified")
+  //           );
+  //         });
+
+  //         const isPeriodPaid = paidPeriodIds.has(periodId);
+
+  //         if (!hasTransactionForDate && !isPeriodPaid) {
+  //           fullPendingAmount += dailyAmount;
+  //           missedPeriods.push({
+  //             date: new Date(checkDate),
+  //             amount: dailyAmount,
+  //             type: "day",
+  //             periodId: periodId,
+  //           });
+  //         }
+
+  //         checkDate.setDate(checkDate.getDate() + 1);
+  //         dayCount++;
+  //       }
+
+  //       pendingAmount = fullPendingAmount;
+  //     } else if (planType === "weekly") {
+  //       // Weekly plan logic (similar approach but for weeks)
+  //       const checkDate = new Date(openingDate);
+  //       let weekCount = 0;
+  //       const processedWeeks = new Set();
+
+  //       while (checkDate <= today && weekCount < duration) {
+  //         const weekStart = new Date(checkDate);
+  //         const weekEnd = new Date(checkDate);
+  //         weekEnd.setDate(weekEnd.getDate() + 6);
+
+  //         const weekKey = `week-${weekStart.toISOString().split("T")[0]}`;
+  //         const periodId = weekKey;
+
+  //         if (processedWeeks.has(weekKey)) {
+  //           checkDate.setDate(checkDate.getDate() + 7);
+  //           weekCount++;
+  //           continue;
+  //         }
+
+  //         processedWeeks.add(weekKey);
+
+  //         const hasTransactionForWeek = transactions.some((transaction) => {
+  //           if (!transaction.date) return false;
+  //           const transactionDate = new Date(transaction.date);
+  //           return (
+  //             transactionDate >= weekStart &&
+  //             transactionDate <= weekEnd &&
+  //             (transaction.status === "completed" ||
+  //               transaction.status === "verified")
+  //           );
+  //         });
+
+  //         const isPeriodPaid = paidPeriodIds.has(periodId);
+
+  //         if (!hasTransactionForWeek && !isPeriodPaid) {
+  //           fullPendingAmount += dailyAmount;
+  //           missedPeriods.push({
+  //             date: new Date(weekStart),
+  //             amount: dailyAmount,
+  //             type: "week",
+  //             periodId: periodId,
+  //             weekStart: new Date(weekStart),
+  //             weekEnd: new Date(weekEnd),
+  //           });
+  //         }
+
+  //         checkDate.setDate(checkDate.getDate() + 7);
+  //         weekCount++;
+  //       }
+
+  //       // For weekly plans, calculate expected weeks
+  //       const timeDiff = today.getTime() - openingDate.getTime();
+  //       const weeksPassed = Math.ceil(timeDiff / (1000 * 3600 * 24 * 7));
+  //       expectedAmount = Math.min(weeksPassed, duration) * dailyAmount;
+
+  //       const amountDifference = Math.max(0, expectedAmount - totalPaidAmount);
+  //       pendingCount = Math.ceil(amountDifference / dailyAmount);
+
+  //       pendingAmount = fullPendingAmount;
+  //     } else if (planType === "monthly") {
+  //       // Monthly plan logic
+  //       const checkDate = new Date(openingDate);
+  //       let monthCount = 0;
+  //       const processedMonths = new Set();
+
+  //       while (checkDate <= today && monthCount < duration) {
+  //         const monthStart = new Date(
+  //           checkDate.getFullYear(),
+  //           checkDate.getMonth(),
+  //           1
+  //         );
+  //         const monthEnd = new Date(
+  //           checkDate.getFullYear(),
+  //           checkDate.getMonth() + 1,
+  //           0
+  //         );
+  //         monthEnd.setHours(23, 59, 59, 999);
+
+  //         const monthKey = `month-${monthStart.getFullYear()}-${
+  //           monthStart.getMonth() + 1
+  //         }`;
+  //         const periodId = monthKey;
+
+  //         if (processedMonths.has(monthKey)) {
+  //           checkDate.setMonth(checkDate.getMonth() + 1);
+  //           monthCount++;
+  //           continue;
+  //         }
+
+  //         processedMonths.add(monthKey);
+
+  //         const hasTransactionForMonth = transactions.some((transaction) => {
+  //           if (!transaction.date) return false;
+  //           const transactionDate = new Date(transaction.date);
+  //           return (
+  //             transactionDate >= monthStart &&
+  //             transactionDate <= monthEnd &&
+  //             (transaction.status === "completed" ||
+  //               transaction.status === "verified")
+  //           );
+  //         });
+
+  //         const isPeriodPaid = paidPeriodIds.has(periodId);
+
+  //         if (!hasTransactionForMonth && !isPeriodPaid) {
+  //           fullPendingAmount += dailyAmount;
+  //           missedPeriods.push({
+  //             date: new Date(monthStart),
+  //             amount: dailyAmount,
+  //             type: "month",
+  //             periodId: periodId,
+  //             monthStart: new Date(monthStart),
+  //             monthEnd: new Date(monthEnd),
+  //           });
+  //         }
+
+  //         checkDate.setMonth(checkDate.getMonth() + 1);
+  //         monthCount++;
+  //       }
+
+  //       // For monthly plans, calculate expected months
+  //       const monthsPassed =
+  //         (today.getFullYear() - openingDate.getFullYear()) * 12 +
+  //         (today.getMonth() - openingDate.getMonth());
+  //       expectedAmount = Math.min(monthsPassed, duration) * dailyAmount; // REMOVED: +1 that was causing extra month
+
+  //       const amountDifference = Math.max(0, expectedAmount - totalPaidAmount);
+  //       pendingCount = Math.ceil(amountDifference / dailyAmount);
+
+  //       pendingAmount = fullPendingAmount;
+  //     }
+
+  //     console.log("💰 Final Pending Calculation:");
+  //     console.log("- Expected Amount:", expectedAmount);
+  //     console.log("- Current Balance:", totalPaidAmount);
+  //     console.log("- Pending Count:", pendingCount);
+
+  //     // ✅ FIXED: Calculate pending days based on remaining maturity amount (principal-only)
+  //     const pendingDays = calculatePendingDays(
+  //       account,
+  //       remainingMaturityAmount,
+  //       planType
+  //     );
+
+  //     // FIXED: Check if today's payment requirement is fulfilled (no pending for today)
+  //     const hasPaidToday = checkIfTodayPaid(
+  //       account,
+  //       planType,
+  //       transactions,
+  //       missedPeriods
+  //     );
+
+  //     // ✅ FIXED: The key issue - hasPending should be true if there are pending days OR missed periods
+  //     const hasPendingPayments =
+  //       remainingMaturityAmount > 0 ||
+  //       missedPeriods.length > 0 ||
+  //       pendingCount > 0;
+
+  //     pending[account._id] = {
+  //       amount: pendingAmount,
+  //       count: pendingCount, // ✅ FIXED: Use calculated pending count
+  //       hasPending: hasPendingPayments,
+  //       maturityAmount: displayMaturityAmount,
+  //       progressMaturityAmount: progressMaturityAmount,
+  //       principalAmount,
+  //       interestAmount,
+  //       totalPaidAmount,
+  //       remainingMaturityAmount,
+  //       isMaturityReached: totalPaidAmount >= progressMaturityAmount,
+  //       missedPeriods,
+  //       pendingDays,
+  //       maturityCalculation: displayMaturityCalculation,
+  //       progressMaturityCalculation: progressMaturityCalculation,
+  //       planType: planType,
+  //       hasPaidToday: hasPaidToday,
+  //       fullPendingAmount: fullPendingAmount,
+  //       // ✅ ADDED: For debugging and display
+  //       expectedAmount: expectedAmount,
+  //       daysPassed: daysPassed,
+  //     };
+
+  //     console.log(
+  //       `📊 Account ${account.accountNumber} Final Pending Calculation:`,
+  //       {
+  //         totalBalance: account.totalBalance,
+  //         totalPaidAmount: totalPaidAmount,
+  //         expectedAmount: expectedAmount,
+  //         progressMaturityAmount: progressMaturityAmount,
+  //         remainingMaturityAmount: remainingMaturityAmount,
+  //         pendingAmount: pendingAmount,
+  //         fullPendingAmount: fullPendingAmount,
+  //         pendingCount: pendingCount,
+  //         pendingDays: pendingDays,
+  //         hasPaidToday: hasPaidToday,
+  //         missedPeriodsCount: missedPeriods.length,
+  //         hasPending: hasPendingPayments,
+  //         progress:
+  //           ((totalPaidAmount / progressMaturityAmount) * 100).toFixed(1) + "%",
+  //       }
+  //     );
+  //   });
+
+  //   setPendingPayments(pending);
+  // };
+  // FIXED: Enhanced pending payment calculation that properly handles withdrawals
+  // FIXED: Correct pending calculation that properly identifies missed periods
   const calculatePendingPayments = (accountsData) => {
     const pending = {};
     const today = new Date();
@@ -285,6 +1358,10 @@ const AccountsPage = () => {
     );
 
     accountsData.forEach((account) => {
+      console.log(
+        `\n🔄 Calculating pending for account: ${account.accountNumber}`
+      );
+
       const accountPaidPeriods = storedPaidPeriods[account._id] || [];
       const paidPeriodIds = new Set(accountPaidPeriods.map((p) => p.periodId));
 
@@ -296,27 +1373,35 @@ const AccountsPage = () => {
       const dailyAmount = account.dailyAmount || 0;
       const duration = account.duration || account.planId?.duration || 0;
 
-      const maturityCalculation = calculateMaturityAmount(account);
-      const maturityAmount = maturityCalculation.maturityAmount;
-      const principalAmount = maturityCalculation.principalAmount;
-      const interestAmount = maturityCalculation.interestAmount;
+      // Calculate maturity amounts
+      const progressMaturityCalculation = calculateMaturityAmount(
+        account,
+        false
+      );
+      const displayMaturityCalculation = calculateMaturityAmount(account, true);
 
-      // ✅ FIXED: Use account.totalBalance for totalPaidAmount instead of calculating from transactions
+      const progressMaturityAmount = progressMaturityCalculation.maturityAmount;
+      const displayMaturityAmount = displayMaturityCalculation.maturityAmount;
+      const principalAmount = progressMaturityCalculation.principalAmount;
+      const interestAmount = displayMaturityCalculation.interestAmount;
+
+      // Use account.totalBalance for totalPaidAmount
       const totalPaidAmount = account.totalBalance || 0;
 
-      let remainingMaturityAmount = maturityAmount;
-      const missedPeriods = [];
-
-      // ✅ FIXED: Calculate remaining maturity amount correctly
-      remainingMaturityAmount = Math.max(0, maturityAmount - totalPaidAmount);
+      // Calculate remaining amount
+      let remainingMaturityAmount = Math.max(
+        0,
+        progressMaturityAmount - totalPaidAmount
+      );
 
       // If maturity reached, no pending payments
-      if (totalPaidAmount >= maturityAmount) {
+      if (totalPaidAmount >= progressMaturityAmount) {
         pending[account._id] = {
           amount: 0,
           count: 0,
           hasPending: false,
-          maturityAmount,
+          maturityAmount: displayMaturityAmount,
+          progressMaturityAmount: progressMaturityAmount,
           principalAmount,
           interestAmount,
           totalPaidAmount,
@@ -324,205 +1409,114 @@ const AccountsPage = () => {
           isMaturityReached: true,
           missedPeriods: [],
           pendingDays: 0,
-          maturityCalculation,
-          hasPaidToday: true, // No need to pay if maturity reached
-          fullPendingAmount: 0, // ✅ ADDED: Full pending amount
+          maturityCalculation: displayMaturityCalculation,
+          progressMaturityCalculation: progressMaturityCalculation,
+          hasPaidToday: true,
+          fullPendingAmount: 0,
         };
         return;
       }
 
       let pendingAmount = 0;
       let pendingCount = 0;
-      let fullPendingAmount = 0; // ✅ ADDED: This will track the full pending amount
+      const missedPeriods = [];
 
-      // FIXED: Calculate pending periods based on plan type - ONLY UP TO TODAY
+      // ✅ FIXED: SIMPLIFIED LOGIC - Calculate based on expected vs actual
       if (planType === "daily") {
-        const checkDate = new Date(openingDate);
-        let dayCount = 0;
-        const processedDates = new Set();
+        // Calculate days between opening date and today
+        const timeDiff = today.getTime() - openingDate.getTime();
+        const daysPassed = Math.ceil(timeDiff / (1000 * 3600 * 24));
+        const effectiveDaysPassed = Math.min(daysPassed, duration);
 
-        // Only check dates up to today (not future dates)
-        while (checkDate <= today && dayCount < duration) {
-          const dateKey = checkDate.toISOString().split("T")[0];
-          const periodId = `day-${dateKey}`;
+        // Expected amount based on time passed
+        const expectedAmount = effectiveDaysPassed * dailyAmount;
 
-          if (processedDates.has(dateKey)) {
+        console.log("📅 Daily Plan Calculation:", {
+          openingDate: openingDate.toDateString(),
+          today: today.toDateString(),
+          daysPassed,
+          effectiveDaysPassed,
+          dailyAmount,
+          expectedAmount,
+          currentBalance: totalPaidAmount,
+        });
+
+        // Calculate pending based on difference
+        const amountDifference = Math.max(0, expectedAmount - totalPaidAmount);
+        pendingCount = Math.ceil(amountDifference / dailyAmount);
+        pendingAmount = pendingCount * dailyAmount;
+
+        console.log("💰 Pending Calculation:", {
+          amountDifference,
+          pendingCount,
+          pendingAmount,
+        });
+
+        // Also populate missed periods for display
+        if (pendingCount > 0) {
+          const checkDate = new Date(openingDate);
+          for (let i = 0; i < effectiveDaysPassed; i++) {
+            const dateKey = checkDate.toISOString().split("T")[0];
+            const periodId = `day-${dateKey}`;
+
+            const hasTransactionForDate = transactions.some((transaction) => {
+              if (!transaction.date) return false;
+              const transactionDate = new Date(transaction.date);
+              const transactionDateKey = transactionDate
+                .toISOString()
+                .split("T")[0];
+              return (
+                transactionDateKey === dateKey &&
+                (transaction.status === "completed" ||
+                  transaction.status === "verified")
+              );
+            });
+
+            const isPeriodPaid = paidPeriodIds.has(periodId);
+
+            if (!hasTransactionForDate && !isPeriodPaid) {
+              missedPeriods.push({
+                date: new Date(checkDate),
+                amount: dailyAmount,
+                type: "day",
+                periodId: periodId,
+              });
+            }
+
             checkDate.setDate(checkDate.getDate() + 1);
-            dayCount++;
-            continue;
           }
-
-          processedDates.add(dateKey);
-
-          const hasTransactionForDate = transactions.some((transaction) => {
-            if (!transaction.date) return false;
-            const transactionDate = new Date(transaction.date);
-            const transactionDateKey = transactionDate
-              .toISOString()
-              .split("T")[0];
-            return (
-              transactionDateKey === dateKey &&
-              (transaction.status === "completed" ||
-                transaction.status === "verified")
-            );
-          });
-
-          const isPeriodPaid = paidPeriodIds.has(periodId);
-
-          // Track all pending periods for full amount calculation
-          if (!hasTransactionForDate && !isPeriodPaid) {
-            fullPendingAmount += dailyAmount;
-            missedPeriods.push({
-              date: new Date(checkDate),
-              amount: dailyAmount,
-              type: "day",
-              periodId: periodId,
-            });
-          }
-
-          checkDate.setDate(checkDate.getDate() + 1);
-          dayCount++;
         }
-
-        // For daily plans, pending amount equals full pending amount
-        pendingAmount = fullPendingAmount;
-        pendingCount = missedPeriods.length;
-
       } else if (planType === "weekly") {
-        // FIXED: Weekly plan calculation - only up to current week
-        const checkDate = new Date(openingDate);
-        let weekCount = 0;
-        const processedWeeks = new Set();
+        // Weekly plan calculation
+        const timeDiff = today.getTime() - openingDate.getTime();
+        const weeksPassed = Math.ceil(timeDiff / (1000 * 3600 * 24 * 7));
+        const effectiveWeeksPassed = Math.min(weeksPassed, duration);
 
-        // Only check weeks up to current week (not future weeks)
-        while (checkDate <= today && weekCount < duration) {
-          const weekStart = new Date(checkDate);
-          const weekEnd = new Date(checkDate);
-          weekEnd.setDate(weekEnd.getDate() + 6); // Week ends 6 days later
-
-          const weekKey = `week-${weekStart.toISOString().split("T")[0]}`;
-          const periodId = weekKey;
-
-          if (processedWeeks.has(weekKey)) {
-            checkDate.setDate(checkDate.getDate() + 7);
-            weekCount++;
-            continue;
-          }
-
-          processedWeeks.add(weekKey);
-
-          // Check if there's any transaction in this week
-          const hasTransactionForWeek = transactions.some((transaction) => {
-            if (!transaction.date) return false;
-            const transactionDate = new Date(transaction.date);
-            return (
-              transactionDate >= weekStart &&
-              transactionDate <= weekEnd &&
-              (transaction.status === "completed" ||
-                transaction.status === "verified")
-            );
-          });
-
-          const isPeriodPaid = paidPeriodIds.has(periodId);
-
-          // Track all pending periods for full amount calculation
-          if (!hasTransactionForWeek && !isPeriodPaid) {
-            fullPendingAmount += dailyAmount;
-            missedPeriods.push({
-              date: new Date(weekStart),
-              amount: dailyAmount,
-              type: "week",
-              periodId: periodId,
-              weekStart: new Date(weekStart),
-              weekEnd: new Date(weekEnd),
-            });
-          }
-
-          checkDate.setDate(checkDate.getDate() + 7);
-          weekCount++;
-        }
-
-        // For weekly plans, pending amount equals full pending amount
-        pendingAmount = fullPendingAmount;
-        pendingCount = missedPeriods.length;
-
+        const expectedAmount = effectiveWeeksPassed * dailyAmount;
+        const amountDifference = Math.max(0, expectedAmount - totalPaidAmount);
+        pendingCount = Math.ceil(amountDifference / dailyAmount);
+        pendingAmount = pendingCount * dailyAmount;
       } else if (planType === "monthly") {
-        // Monthly plan calculation - only up to current month
-        const checkDate = new Date(openingDate);
-        let monthCount = 0;
-        const processedMonths = new Set();
+        // Monthly plan calculation
+        const monthsPassed =
+          (today.getFullYear() - openingDate.getFullYear()) * 12 +
+          (today.getMonth() - openingDate.getMonth());
+        const effectiveMonthsPassed = Math.min(monthsPassed, duration);
 
-        // Only check months up to current month (not future months)
-        while (checkDate <= today && monthCount < duration) {
-          const monthStart = new Date(
-            checkDate.getFullYear(),
-            checkDate.getMonth(),
-            1
-          );
-          const monthEnd = new Date(
-            checkDate.getFullYear(),
-            checkDate.getMonth() + 1,
-            0
-          );
-          monthEnd.setHours(23, 59, 59, 999);
-
-          const monthKey = `month-${monthStart.getFullYear()}-${
-            monthStart.getMonth() + 1
-          }`;
-          const periodId = monthKey;
-
-          if (processedMonths.has(monthKey)) {
-            checkDate.setMonth(checkDate.getMonth() + 1);
-            monthCount++;
-            continue;
-          }
-
-          processedMonths.add(monthKey);
-
-          // Check if there's any transaction in this month
-          const hasTransactionForMonth = transactions.some((transaction) => {
-            if (!transaction.date) return false;
-            const transactionDate = new Date(transaction.date);
-            return (
-              transactionDate >= monthStart &&
-              transactionDate <= monthEnd &&
-              (transaction.status === "completed" ||
-                transaction.status === "verified")
-            );
-          });
-
-          const isPeriodPaid = paidPeriodIds.has(periodId);
-
-          // Track all pending periods for full amount calculation
-          if (!hasTransactionForMonth && !isPeriodPaid) {
-            fullPendingAmount += dailyAmount;
-            missedPeriods.push({
-              date: new Date(monthStart),
-              amount: dailyAmount,
-              type: "month",
-              periodId: periodId,
-              monthStart: new Date(monthStart),
-              monthEnd: new Date(monthEnd),
-            });
-          }
-
-          checkDate.setMonth(checkDate.getMonth() + 1);
-          monthCount++;
-        }
-
-        // For monthly plans, pending amount equals full pending amount
-        pendingAmount = fullPendingAmount;
-        pendingCount = missedPeriods.length;
+        const expectedAmount = effectiveMonthsPassed * dailyAmount;
+        const amountDifference = Math.max(0, expectedAmount - totalPaidAmount);
+        pendingCount = Math.ceil(amountDifference / dailyAmount);
+        pendingAmount = pendingCount * dailyAmount;
       }
 
-      // ✅ FIXED: Calculate pending days based on remaining maturity amount
+      // Calculate pending days
       const pendingDays = calculatePendingDays(
         account,
         remainingMaturityAmount,
         planType
       );
 
-      // FIXED: Check if today's payment requirement is fulfilled (no pending for today)
+      // Check if today is paid
       const hasPaidToday = checkIfTodayPaid(
         account,
         planType,
@@ -530,64 +1524,68 @@ const AccountsPage = () => {
         missedPeriods
       );
 
+      const hasPendingPayments = pendingCount > 0;
+
       pending[account._id] = {
         amount: pendingAmount,
         count: pendingCount,
-        hasPending: pendingAmount > 0,
-        maturityAmount,
+        hasPending: hasPendingPayments,
+        maturityAmount: displayMaturityAmount,
+        progressMaturityAmount: progressMaturityAmount,
         principalAmount,
         interestAmount,
-        totalPaidAmount, // ✅ Now uses account.totalBalance
-        remainingMaturityAmount, // ✅ Now correctly calculated
-        isMaturityReached: totalPaidAmount >= maturityAmount,
+        totalPaidAmount,
+        remainingMaturityAmount,
+        isMaturityReached: totalPaidAmount >= progressMaturityAmount,
         missedPeriods,
         pendingDays,
-        maturityCalculation,
+        maturityCalculation: displayMaturityCalculation,
+        progressMaturityCalculation: progressMaturityCalculation,
         planType: planType,
-        hasPaidToday: hasPaidToday, // ✅ FIXED: Now correctly indicates if today is paid
-        fullPendingAmount: fullPendingAmount, // ✅ ADDED: Full pending amount
+        hasPaidToday: hasPaidToday,
+        fullPendingAmount: pendingAmount,
       };
 
-      // Add this at the end of the forEach loop, before setting pending
-      console.log(`📊 Account ${account.accountNumber}:`, {
-        totalBalance: account.totalBalance,
-        totalPaidAmount: totalPaidAmount,
-        maturityAmount: maturityAmount,
-        remainingMaturityAmount: remainingMaturityAmount,
-        pendingAmount: pendingAmount,
-        fullPendingAmount: fullPendingAmount,
-        pendingCount: pendingCount,
-        hasPaidToday: hasPaidToday,
-        missedPeriodsCount: missedPeriods.length,
-        progress: ((totalPaidAmount / maturityAmount) * 100).toFixed(1) + "%",
-      });
+      console.log(
+        `📊 Account ${account.accountNumber} Final Pending Calculation:`,
+        {
+          totalBalance: account.totalBalance,
+          totalPaidAmount: totalPaidAmount,
+          progressMaturityAmount: progressMaturityAmount,
+          remainingMaturityAmount: remainingMaturityAmount,
+          pendingAmount: pendingAmount,
+          pendingCount: pendingCount,
+          pendingDays: pendingDays,
+          hasPaidToday: hasPaidToday,
+          missedPeriodsCount: missedPeriods.length,
+          hasPending: hasPendingPayments,
+          progress:
+            ((totalPaidAmount / progressMaturityAmount) * 100).toFixed(1) + "%",
+        }
+      );
     });
 
     setPendingPayments(pending);
   };
-
-  // FIXED: Enhanced calculatePendingDays function to handle different plan types
   const calculatePendingDays = (account, remainingMaturityAmount, planType) => {
     const dailyAmount = account.dailyAmount || 0;
     if (dailyAmount <= 0) return 0;
 
+    // FIXED: Calculate based on remaining principal amount only
+    const remainingPeriods = Math.ceil(remainingMaturityAmount / dailyAmount);
+
     switch (planType) {
       case "daily":
-        return Math.ceil(remainingMaturityAmount / dailyAmount);
+        return remainingPeriods;
       case "weekly":
-        // For weekly plans, convert to weeks first, then to days for display
-        const weeksNeeded = Math.ceil(remainingMaturityAmount / dailyAmount);
-        return weeksNeeded * 7; // Return as days for consistent display
+        return remainingPeriods * 7; // Convert weeks to days for display
       case "monthly":
-        // For monthly plans, convert to months first, then to days for display
-        const monthsNeeded = Math.ceil(remainingMaturityAmount / dailyAmount);
-        return monthsNeeded * 30; // Return as days for consistent display
+        return remainingPeriods * 30; // Convert months to days for display
       default:
-        return Math.ceil(remainingMaturityAmount / dailyAmount);
+        return remainingPeriods;
     }
   };
 
-  // Helper functions
   const getPendingTimeDisplay = (account, pending) => {
     if (!pending) return "";
     const planType = pending.planType || getPlanTypeFromAccount(account);
@@ -809,11 +1807,81 @@ const AccountsPage = () => {
     }
   };
 
+  // const handlePayment = (account) => {
+  //   const pending = pendingPayments[account._id];
+
+  //   // FIXED: Only prevent payment if today is paid AND there are no pending payments
+  //   if (pending?.hasPaidToday && !pending?.hasPending) {
+  //     alert(
+  //       "You have already made the payment for today. Please wait for the next payment period."
+  //     );
+  //     return;
+  //   }
+
+  //   if (pending?.isMaturityReached) {
+  //     alert(
+  //       "Congratulations! You have reached the maturity amount for this account. No further payments are required."
+  //     );
+  //     return;
+  //   }
+
+  //   if (pending && pending.hasPending) {
+  //     const planType = pending.planType || getPlanTypeFromAccount(account);
+  //     const pendingTimeDisplay = getPendingTimeDisplay(account, pending);
+  //     const confirmMessage = `You have ${
+  //       pending.count
+  //     } pending ${planType} payment${pending.count > 1 ? "s" : ""} totaling ₹${
+  //       pending.amount
+  //     }. \n\nApproximately ${pendingTimeDisplay} remaining to reach maturity.\n\nDo you want to pay the pending amount of ₹${
+  //       pending.amount
+  //     } instead of the regular ${planType} amount of ₹${account.dailyAmount}?`;
+
+  //     if (window.confirm(confirmMessage)) {
+  //       setSelectedAccount({
+  //         ...account,
+  //         pendingAmount: pending.amount,
+  //         isPendingPayment: true,
+  //         maturityAmount: pending.maturityAmount,
+  //         progressMaturityAmount: pending.progressMaturityAmount,
+  //         totalPaidAmount: pending.totalPaidAmount,
+  //         remainingMaturityAmount: pending.remainingMaturityAmount,
+  //         pendingDetails: pending,
+  //         collectorId: account.collectorId,
+  //       });
+  //     } else {
+  //       setSelectedAccount({
+  //         ...account,
+  //         maturityAmount: pending.maturityAmount,
+  //         progressMaturityAmount: pending.progressMaturityAmount,
+  //         totalPaidAmount: pending.totalPaidAmount,
+  //         remainingMaturityAmount: pending.remainingMaturityAmount,
+  //         pendingDetails: pending,
+  //         collectorId: account.collectorId,
+  //       });
+  //     }
+  //   } else {
+  //     setSelectedAccount({
+  //       ...account,
+  //       maturityAmount: pending?.maturityAmount || 0,
+  //       progressMaturityAmount: pending?.progressMaturityAmount || 0,
+  //       totalPaidAmount: pending?.totalPaidAmount || 0,
+  //       remainingMaturityAmount: pending?.remainingMaturityAmount || 0,
+  //       pendingDetails: pending,
+  //       collectorId: account.collectorId,
+  //     });
+  //   }
+
+  //   setReferenceNumber(generateReferenceNumber());
+  //   setCustomAmount("");
+  //   setIsCustomPayment(false);
+  //   setShowPaymentModal(true);
+  // };
+
   const handlePayment = (account) => {
     const pending = pendingPayments[account._id];
 
-    // FIXED: Check if today's payment is already made (no pending for today)
-    if (pending?.hasPaidToday) {
+    // FIXED: Only prevent payment if today is paid AND there are no pending payments
+    if (pending?.hasPaidToday && !pending?.hasPending) {
       alert(
         "You have already made the payment for today. Please wait for the next payment period."
       );
@@ -827,7 +1895,10 @@ const AccountsPage = () => {
       return;
     }
 
-    if (pending && pending.hasPending) {
+    // ✅ FIXED: Always set isPendingPayment based on actual pending status
+    const hasActualPendingPayments = pending?.hasPending && pending?.count > 0;
+
+    if (pending && hasActualPendingPayments) {
       const planType = pending.planType || getPlanTypeFromAccount(account);
       const pendingTimeDisplay = getPendingTimeDisplay(account, pending);
       const confirmMessage = `You have ${
@@ -842,33 +1913,35 @@ const AccountsPage = () => {
         setSelectedAccount({
           ...account,
           pendingAmount: pending.amount,
-          isPendingPayment: true,
+          isPendingPayment: true, // ✅ FIXED: Set to true when user confirms
           maturityAmount: pending.maturityAmount,
+          progressMaturityAmount: pending.progressMaturityAmount,
           totalPaidAmount: pending.totalPaidAmount,
           remainingMaturityAmount: pending.remainingMaturityAmount,
           pendingDetails: pending,
-          // Ensure collectorId is passed through
           collectorId: account.collectorId,
         });
       } else {
         setSelectedAccount({
           ...account,
+          isPendingPayment: false, // ✅ FIXED: Set to false when user declines
           maturityAmount: pending.maturityAmount,
+          progressMaturityAmount: pending.progressMaturityAmount,
           totalPaidAmount: pending.totalPaidAmount,
           remainingMaturityAmount: pending.remainingMaturityAmount,
           pendingDetails: pending,
-          // Ensure collectorId is passed through
           collectorId: account.collectorId,
         });
       }
     } else {
       setSelectedAccount({
         ...account,
+        isPendingPayment: false, // ✅ FIXED: No pending payments
         maturityAmount: pending?.maturityAmount || 0,
+        progressMaturityAmount: pending?.progressMaturityAmount || 0,
         totalPaidAmount: pending?.totalPaidAmount || 0,
         remainingMaturityAmount: pending?.remainingMaturityAmount || 0,
         pendingDetails: pending,
-        // Ensure collectorId is passed through
         collectorId: account.collectorId,
       });
     }
@@ -878,7 +1951,6 @@ const AccountsPage = () => {
     setIsCustomPayment(false);
     setShowPaymentModal(true);
   };
-
   const calculateCoveredPeriods = (pending, paymentAmount) => {
     if (!pending?.missedPeriods || paymentAmount <= 0) return [];
     let coveredAmount = 0;
@@ -930,7 +2002,7 @@ const AccountsPage = () => {
 
       const pending = pendingPayments[selectedAccount._id];
       const regularAmount = selectedAccount.dailyAmount || 0;
-      
+
       // ✅ FIXED: Use fullPendingAmount for max amount calculation
       const maxAmount = pending?.fullPendingAmount || regularAmount;
       const minAmount = regularAmount;
@@ -944,9 +2016,7 @@ const AccountsPage = () => {
         }
 
         if (enteredAmount > maxAmount) {
-          alert(
-            `Payment amount cannot exceed pending amount of ₹${maxAmount}`
-          );
+          alert(`Payment amount cannot exceed pending amount of ₹${maxAmount}`);
           return;
         }
 
@@ -1002,6 +2072,7 @@ const AccountsPage = () => {
         date: new Date().toISOString(),
         paymentPeriod: isPendingPayment ? "pending" : "current",
         maturityAmount: pending.maturityAmount,
+        progressMaturityAmount: pending.progressMaturityAmount,
         totalPaidAmount: pending.totalPaidAmount,
         coveredPeriods: coveredPeriods,
         // STEP 2: Add collectorId to payment data
@@ -1077,7 +2148,7 @@ const AccountsPage = () => {
         }
 
         const newTotalPaid = pending.totalPaidAmount + paymentAmount;
-        if (newTotalPaid >= pending.maturityAmount) {
+        if (newTotalPaid >= pending.progressMaturityAmount) {
           alertMessage += `\n\n🎉 Congratulations! You have reached the maturity amount of ₹${pending.maturityAmount}!`;
         }
 
@@ -1132,6 +2203,79 @@ const AccountsPage = () => {
     setShowDetailsModal(true);
   };
 
+  // const handleWithdrawal = async () => {
+  //   if (!selectedAccount) return;
+
+  //   try {
+  //     setProcessingWithdrawal(true);
+
+  //     const amount = parseFloat(withdrawalAmount);
+  //     const currentBalance = selectedAccount.currentBalance || 0;
+
+  //     if (isNaN(amount) || amount <= 0) {
+  //       alert("Please enter a valid withdrawal amount");
+  //       return;
+  //     }
+
+  //     if (amount > currentBalance) {
+  //       alert(`Insufficient balance. Available balance: ₹${currentBalance}`);
+  //       return;
+  //     }
+
+  //     if (!withdrawalReason.trim()) {
+  //       alert("Please provide a reason for withdrawal");
+  //       return;
+  //     }
+
+  //     // STEP 1: Get collectorId from the selected account
+  //     const collectorId =
+  //       selectedAccount.collectorId?._id || selectedAccount.collectorId;
+
+  //     const withdrawalData = {
+  //       accountNumber: selectedAccount.accountNumber,
+  //       amount: amount,
+  //       reason: withdrawalReason,
+  //       type: "withdrawal",
+  //       status: "pending",
+  //       collectorId: collectorId,
+  //       customerId: customer?._id,
+  //     };
+
+  //     console.log("💰 Sending withdrawal data:", withdrawalData);
+
+  //     const response = await withdrawAmount(withdrawalData);
+
+  //     if (response.data.success) {
+  //       const updatedBalance =
+  //         response.data.data.currentBalance || currentBalance - amount;
+
+  //       alert(
+  //         `Withdrawal request submitted successfully!\nAmount: ₹${amount}\nStatus: Pending approval\nReference: ${response.data.data.referenceNumber}\nUpdated Balance: ₹${updatedBalance}`
+  //       );
+
+  //       // Reset form
+  //       setWithdrawalAmount("");
+  //       setWithdrawalReason("");
+
+  //       // Immediately update the UI with the new balance
+  //       updateAccountBalance(selectedAccount._id, updatedBalance);
+
+  //       // FIXED: Force reload accounts to recalculate pending payments
+  //       console.log("🔄 Forcing account reload after withdrawal...");
+  //       await loadCustomerAccounts();
+  //     } else {
+  //       throw new Error("Withdrawal request failed");
+  //     }
+  //   } catch (error) {
+  //     console.error("Withdrawal error:", error);
+  //     alert(
+  //       error.response?.data?.message ||
+  //         "Withdrawal request failed. Please try again."
+  //     );
+  //   } finally {
+  //     setProcessingWithdrawal(false);
+  //   }
+  // };
   const handleWithdrawal = async () => {
     if (!selectedAccount) return;
 
@@ -1140,7 +2284,9 @@ const AccountsPage = () => {
 
       const amount = parseFloat(withdrawalAmount);
       const currentBalance = selectedAccount.currentBalance || 0;
+      const dailyAmount = selectedAccount.dailyAmount || 0;
 
+      // Basic validation
       if (isNaN(amount) || amount <= 0) {
         alert("Please enter a valid withdrawal amount");
         return;
@@ -1153,6 +2299,23 @@ const AccountsPage = () => {
 
       if (!withdrawalReason.trim()) {
         alert("Please provide a reason for withdrawal");
+        return;
+      }
+
+      // ✅ NEW: Validate that amount is a multiple of daily amount
+      if (dailyAmount > 0 && amount % dailyAmount !== 0) {
+        const validMultiples = [];
+        let multiple = dailyAmount;
+        while (multiple <= currentBalance) {
+          validMultiples.push(multiple);
+          multiple += dailyAmount;
+        }
+
+        alert(
+          `Withdrawal amount must be a multiple of the plan amount (₹${dailyAmount}).\n\nValid amounts: ${validMultiples
+            .slice(0, 10)
+            .join(", ")}${validMultiples.length > 10 ? "..." : ""}`
+        );
         return;
       }
 
@@ -1189,7 +2352,8 @@ const AccountsPage = () => {
         // Immediately update the UI with the new balance
         updateAccountBalance(selectedAccount._id, updatedBalance);
 
-        // Also refresh accounts to get the latest data
+        // FIXED: Force reload accounts to recalculate pending payments
+        console.log("🔄 Forcing account reload after withdrawal...");
         await loadCustomerAccounts();
       } else {
         throw new Error("Withdrawal request failed");
@@ -1204,8 +2368,6 @@ const AccountsPage = () => {
       setProcessingWithdrawal(false);
     }
   };
-
-  // Add this helper function to immediately update the account balance in the UI
   const updateAccountBalance = (accountId, newBalance) => {
     setAccounts((prevAccounts) =>
       prevAccounts.map((account) =>
@@ -1254,6 +2416,7 @@ const AccountsPage = () => {
     }
   };
 
+  // FIXED: Progress calculation now uses principal-only amount
   const calculateProgress = (balance, targetAmount) => {
     if (!targetAmount || targetAmount === 0) return 0;
     return Math.min((balance / targetAmount) * 100, 100);
@@ -1342,7 +2505,7 @@ const AccountsPage = () => {
                 </button>
 
                 <button
-                hidden
+                  hidden
                   onClick={() => {
                     setShowDetailsModal(false);
                     handleViewWithdrawalHistory(selectedAccount);
@@ -1378,7 +2541,7 @@ const AccountsPage = () => {
                   </p>
                 </div>
 
-                <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-4 rounded-xl">
+                {/* <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-4 rounded-xl">
                   <div className="flex items-center gap-2 mb-2">
                     <TrendingUp className="h-4 w-4" />
                     <span className="text-sm font-medium">Total Paid</span>
@@ -1386,7 +2549,7 @@ const AccountsPage = () => {
                   <p className="text-2xl font-bold">
                     ₹{pending?.totalPaidAmount?.toLocaleString() || "0"}
                   </p>
-                </div>
+                </div> */}
 
                 <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-4 rounded-xl">
                   <div className="flex items-center gap-2 mb-2">
@@ -1411,12 +2574,13 @@ const AccountsPage = () => {
                         Progress:{" "}
                         {calculateProgress(
                           pending.totalPaidAmount,
-                          pending.maturityAmount
+                          pending.progressMaturityAmount
                         ).toFixed(1)}
                         %
                       </span>
                       <span className="text-sm font-bold text-blue-600">
-                        ₹{pending.totalPaidAmount} / ₹{pending.maturityAmount}
+                        ₹{pending.totalPaidAmount} / ₹
+                        {pending.progressMaturityAmount}
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-4">
@@ -1425,15 +2589,15 @@ const AccountsPage = () => {
                         style={{
                           width: `${calculateProgress(
                             pending.totalPaidAmount,
-                            pending.maturityAmount
+                            pending.progressMaturityAmount
                           )}%`,
                         }}
                       ></div>
                     </div>
-                    <div className="flex justify-between text-xs text-gray-600">
+                    {/* <div className="flex justify-between text-xs text-gray-600">
                       <span>Started</span>
                       <span>{pendingTimeDisplay} remaining</span>
-                    </div>
+                    </div> */}
                   </div>
 
                   {/* Maturity Calculation */}
@@ -1550,10 +2714,21 @@ const AccountsPage = () => {
                         min="0"
                         max={selectedAccount.currentBalance}
                       />
+                      {/* <p className="text-xs text-gray-500 mt-1">
+                        Available balance: ₹
+                        {selectedAccount.currentBalance?.toLocaleString() ||
+                          "0"}
+                      </p> */}
+
                       <p className="text-xs text-gray-500 mt-1">
                         Available balance: ₹
                         {selectedAccount.currentBalance?.toLocaleString() ||
                           "0"}
+                        {selectedAccount.dailyAmount > 0 && (
+                          <span className="block text-blue-600 font-medium">
+                            Must be a multiple of ₹{selectedAccount.dailyAmount}
+                          </span>
+                        )}
                       </p>
                     </div>
 
@@ -1570,7 +2745,7 @@ const AccountsPage = () => {
                       />
                     </div>
 
-                    <button
+                    {/* <button
                       onClick={handleWithdrawal}
                       disabled={
                         processingWithdrawal ||
@@ -1587,6 +2762,46 @@ const AccountsPage = () => {
                         parseFloat(withdrawalAmount) >
                           selectedAccount.currentBalance ||
                         !withdrawalReason.trim()
+                          ? "bg-gray-400 cursor-not-allowed text-white"
+                          : "bg-red-600 hover:bg-red-700 text-white"
+                      }`}
+                    >
+                      {processingWithdrawal ? (
+                        <div className="flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Processing...
+                        </div>
+                      ) : (
+                        "Request Withdrawal"
+                      )}
+                    </button> */}
+
+                    <button
+                      onClick={handleWithdrawal}
+                      disabled={
+                        processingWithdrawal ||
+                        !withdrawalAmount ||
+                        parseFloat(withdrawalAmount) <= 0 ||
+                        parseFloat(withdrawalAmount) >
+                          selectedAccount.currentBalance ||
+                        !withdrawalReason.trim() ||
+                        // ✅ NEW: Check if amount is valid multiple
+                        (selectedAccount.dailyAmount > 0 &&
+                          parseFloat(withdrawalAmount) %
+                            selectedAccount.dailyAmount !==
+                            0)
+                      }
+                      className={`w-full py-3 px-4 rounded-lg font-semibold transition-all ${
+                        processingWithdrawal ||
+                        !withdrawalAmount ||
+                        parseFloat(withdrawalAmount) <= 0 ||
+                        parseFloat(withdrawalAmount) >
+                          selectedAccount.currentBalance ||
+                        !withdrawalReason.trim() ||
+                        (selectedAccount.dailyAmount > 0 &&
+                          parseFloat(withdrawalAmount) %
+                            selectedAccount.dailyAmount !==
+                            0)
                           ? "bg-gray-400 cursor-not-allowed text-white"
                           : "bg-red-600 hover:bg-red-700 text-white"
                       }`}
@@ -1742,12 +2957,14 @@ const AccountsPage = () => {
                     handlePayment(selectedAccount);
                   }}
                   className={`flex-1 px-6 py-3 rounded-xl font-medium text-white transition-colors ${
-                    pending?.hasPending
+                    pending?.hasPending || pending?.pendingDays > 0
                       ? "bg-red-600 hover:bg-red-700"
                       : "bg-green-600 hover:bg-green-700"
                   }`}
                 >
-                  {pending?.hasPending ? "Pay Pending Amount" : "Make Payment"}
+                  {pending?.hasPending || pending?.pendingDays > 0
+                    ? "Pay Pending Amount"
+                    : "Make Payment"}
                 </button>
               )}
             </div>
@@ -1757,24 +2974,53 @@ const AccountsPage = () => {
     );
   };
 
-  // Payment Modal Component - FIXED: Full Amount calculation
+  // Payment Modal Component - FIXED: Proper calculation that works after withdrawals
   const PaymentModal = () => {
     if (!showPaymentModal || !selectedAccount) return null;
 
     const amountLabel = getAmountLabelFromAccount(selectedAccount);
     const regularAmount = selectedAccount.dailyAmount || 0;
-    const pendingAmount = selectedAccount.pendingAmount || regularAmount;
     const isPendingPayment = selectedAccount.isPendingPayment;
     const minAmount = regularAmount;
-    
-    // ✅ FIXED: Use fullPendingAmount for max amount calculation
+
+    // ✅ FIXED: Get the latest pending data from state
     const pending = pendingPayments[selectedAccount._id];
-    const maxAmount = pending?.fullPendingAmount || regularAmount;
-    
+
+    // ✅ FIXED: Calculate maxAmount based on actual pending status, not just isPendingPayment
+    let maxAmount = regularAmount; // Default to regular amount
+
+    // ✅ FIXED: maxAmount calculation that works regardless of isPendingPayment
+    const hasActualPendingPayments = pending?.hasPending && pending?.count > 0;
+
+    if (hasActualPendingPayments) {
+      maxAmount = pending.count * regularAmount;
+
+      console.log("💰 Fixed maxAmount calculation:", {
+        hasActualPendingPayments,
+        pendingCount: pending.count,
+        regularAmount,
+        calculatedMax: pending.count * regularAmount,
+        isPendingPayment, // Just for debug
+      });
+
+      // Don't exceed remaining maturity amount
+      const remainingMaturityAmount =
+        pending?.remainingMaturityAmount || maxAmount;
+      if (maxAmount > remainingMaturityAmount) {
+        maxAmount = remainingMaturityAmount;
+        console.log("💰 Limited by remaining maturity:", maxAmount);
+      }
+    }
+
+    // ✅ FIXED: Update hasPendingPayments to be more reliable
+    const hasPendingPayments = hasActualPendingPayments;
+
     const maturityAmount = selectedAccount.maturityAmount || 0;
+    const progressMaturityAmount =
+      selectedAccount.progressMaturityAmount || maturityAmount;
     const totalPaidAmount = selectedAccount.totalPaidAmount || 0;
     const remainingMaturityAmount =
-      selectedAccount.remainingMaturityAmount || maturityAmount;
+      pending?.remainingMaturityAmount || maxAmount;
     const pendingDetails = selectedAccount.pendingDetails;
     const pendingTimeDisplay = getPendingTimeDisplay(selectedAccount, pending);
     const coveredPeriods = coveredPeriodsMap[selectedAccount._id] || [];
@@ -1786,11 +3032,33 @@ const AccountsPage = () => {
         ? maxAmount - parseFloat(customAmount)
         : 0;
 
-    const hasPendingPayments = pending?.hasPending;
     const validMultiples = getValidMultiples(minAmount, maxAmount);
     const isAmountValid = customAmount
       ? isValidMultiple(parseFloat(customAmount), minAmount)
       : true;
+
+    const pendingCount = pending?.count || 0;
+    const periodsCovered = Math.floor(calculatedPaymentAmount / regularAmount);
+
+    console.log("💰 Payment Modal Final Values:", {
+      isPendingPayment,
+      regularAmount,
+      pendingCount,
+      maxAmount,
+      calculatedPaymentAmount,
+      formula: `${pendingCount} × ₹${regularAmount} = ₹${maxAmount}`,
+      periodsCovered,
+      hasPendingPayments,
+      // Debug info
+      pendingData: pending
+        ? {
+            count: pending.count,
+            hasPending: pending.hasPending,
+            remainingMaturityAmount: pending.remainingMaturityAmount,
+            totalPaidAmount: pending.totalPaidAmount,
+          }
+        : "No pending data",
+    });
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -1799,32 +3067,103 @@ const AccountsPage = () => {
             <h3 className="text-xl font-bold">
               {isPendingPayment ? "Pay Pending Amount" : "Make Payment"}
             </h3>
+            <p className="text-sm text-gray-600 mt-1">
+              {selectedAccount.accountNumber} - {selectedAccount.type}
+            </p>
+
+            {/* Show calculation breakdown for pending payments */}
+            {hasPendingPayments && (
+              <div className="mt-2 bg-blue-50 border border-blue-200 rounded p-2 text-xs">
+                <p className="text-blue-700 font-semibold">
+                  Pending: {pendingCount} {amountLabel}(s) × ₹{regularAmount} =
+                  ₹{maxAmount}
+                </p>
+                {maxAmount !== pendingCount * regularAmount && (
+                  <p className="text-blue-600 mt-1">
+                    (Limited by remaining maturity amount: ₹
+                    {remainingMaturityAmount})
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto">
             <div className="p-6 space-y-4">
               {/* Account Information */}
-              <div>
-                <p className="text-sm text-gray-600">Account</p>
-                <p className="font-semibold">
-                  {selectedAccount.accountNumber} - {selectedAccount.type}
-                </p>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-gray-600">Current Balance</p>
+                    <p className="font-semibold text-green-600">
+                      ₹{selectedAccount.currentBalance?.toLocaleString() || "0"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Remaining to Maturity</p>
+                    <p className="font-semibold text-orange-600">
+                      ₹{remainingMaturityAmount?.toLocaleString() || "0"}
+                    </p>
+                  </div>
+                </div>
 
-                <p className="text-sm text-gray-600 mt-3">
-                  {isPendingPayment
-                    ? "Pending Amount"
-                    : amountLabel === "week"
-                    ? "Weekly Amount"
-                    : amountLabel === "month"
-                    ? "Monthly Amount"
-                    : "Daily Amount"}
-                  :<span className="font-semibold"> ₹{pendingAmount}</span>
-                </p>
+                {/* Pending Information */}
+                {hasPendingPayments && (
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-600">
+                        Pending {amountLabel}(s):
+                      </span>
+                      <span className="font-semibold text-red-600">
+                        {pendingCount}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-600">
+                        Amount per {amountLabel}:
+                      </span>
+                      <span className="font-semibold">₹{regularAmount}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs font-semibold">
+                      <span className="text-gray-600">Total Pending:</span>
+                      <span className="text-red-600">
+                        ₹{pendingCount * regularAmount}
+                      </span>
+                    </div>
+                    {/* ✅ FIXED: Show withdrawal impact if applicable */}
+                    {pending.additionalPendingFromWithdrawals > 0 && (
+                      <div className="flex justify-between items-center text-xs text-orange-600 mt-1">
+                        <span className="text-gray-600">From withdrawals:</span>
+                        <span className="font-semibold">
+                          {pending.additionalPendingFromWithdrawals}{" "}
+                          {amountLabel}(s)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Payment Amount Selection */}
               <div>
                 <p className="text-sm text-gray-600 mb-2">Payment Amount</p>
+
+                {/* DEBUG INFO - Remove after fixing */}
+                {/* <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mb-2 text-xs">
+                  <p className="font-semibold">Debug Info:</p>
+                  <p>
+                    hasPendingPayments: {hasPendingPayments ? "true" : "false"}
+                  </p>
+                  <p>pendingCount: {pendingCount}</p>
+                  <p>maxAmount: {maxAmount}</p>
+                  <p>regularAmount: {regularAmount}</p>
+                  <p>isPendingPayment: {isPendingPayment ? "true" : "false"}</p>
+                  <p>
+                    calculated: {pendingCount} × {regularAmount} ={" "}
+                    {pendingCount * regularAmount}
+                  </p>
+                </div> */}
+
                 <div className="space-y-3">
                   {hasPendingPayments ? (
                     <>
@@ -1836,19 +3175,21 @@ const AccountsPage = () => {
                           }}
                           className={`flex-1 flex items-center justify-center p-3 border rounded-lg text-sm ${
                             !isCustomPayment
-                              ? "border-blue-500 bg-blue-50"
-                              : "border-gray-300"
+                              ? "border-blue-500 bg-blue-50 text-blue-700"
+                              : "border-gray-300 text-gray-700"
                           }`}
                         >
                           <CheckCircle className="h-4 w-4 mr-2" />
-                          Full Amount (₹{maxAmount})
+                          {hasPendingPayments
+                            ? `Pay All (${pendingCount} ${amountLabel}s) - ₹${maxAmount}`
+                            : `Full Amount - ₹${maxAmount}`}
                         </button>
                         <button
                           onClick={() => setIsCustomPayment(true)}
                           className={`flex-1 flex items-center justify-center p-3 border rounded-lg text-sm ${
                             isCustomPayment
-                              ? "border-blue-500 bg-blue-50"
-                              : "border-gray-300"
+                              ? "border-blue-500 bg-blue-50 text-blue-700"
+                              : "border-gray-300 text-gray-700"
                           }`}
                         >
                           <DollarSign className="h-4 w-4 mr-2" />
@@ -1877,7 +3218,9 @@ const AccountsPage = () => {
                             />
                             {customAmount && !isAmountValid && (
                               <p className="text-xs text-red-600 mt-1">
-                                Please enter a multiple of ₹{minAmount}
+                                Please enter a multiple of ₹{minAmount}. Valid
+                                amounts: {validMultiples.slice(0, 5).join(", ")}
+                                {validMultiples.length > 5 ? "..." : ""}
                               </p>
                             )}
                           </div>
@@ -1900,6 +3243,10 @@ const AccountsPage = () => {
                                   </p>
                                 </div>
                               </div>
+                              <div className="mt-2 text-xs text-gray-600">
+                                This covers {periodsCovered} out of{" "}
+                                {pendingCount} pending {amountLabel}(s)
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1910,7 +3257,12 @@ const AccountsPage = () => {
                       <div className="flex items-center justify-center">
                         <CheckCircle className="h-5 w-5 text-blue-600 mr-2" />
                         <p className="text-sm font-semibold text-blue-800">
-                          Regular Payment Amount: ₹{maxAmount}
+                          {amountLabel === "week"
+                            ? "Weekly Amount"
+                            : amountLabel === "month"
+                            ? "Monthly Amount"
+                            : "Daily Amount"}
+                          : ₹{maxAmount}
                         </p>
                       </div>
                     </div>
@@ -1918,6 +3270,7 @@ const AccountsPage = () => {
                 </div>
               </div>
 
+              {/* Rest of the PaymentModal code remains the same */}
               {/* Payment Method Selection */}
               <div>
                 <p className="text-sm text-gray-600 mb-2">Payment Method</p>
@@ -1926,8 +3279,8 @@ const AccountsPage = () => {
                     onClick={() => setPaymentMethod("cash")}
                     className={`flex-1 flex items-center justify-center p-3 border rounded-lg text-sm ${
                       paymentMethod === "cash"
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-300"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-300 text-gray-700"
                     }`}
                   >
                     <DollarSign className="h-4 w-4 mr-2" />
@@ -1937,8 +3290,8 @@ const AccountsPage = () => {
                     onClick={() => setPaymentMethod("online")}
                     className={`flex-1 flex items-center justify-center p-3 border rounded-lg text-sm ${
                       paymentMethod === "online"
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-300"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-300 text-gray-700"
                     }`}
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
@@ -1998,6 +3351,11 @@ const AccountsPage = () => {
                         Please hand over ₹{calculatedPaymentAmount} to our
                         collector.
                       </p>
+                      {hasPendingPayments && (
+                        <p className="text-sm text-yellow-700">
+                          This covers {periodsCovered} pending {amountLabel}(s)
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="text-xs text-yellow-600 mt-2 space-y-1">
@@ -2056,15 +3414,32 @@ const AccountsPage = () => {
                   </div>
                 ) : isPendingPayment ? (
                   hasPendingPayments && isCustomPayment && customAmount ? (
-                    "Pay Partial Amount"
+                    `Pay ₹${calculatedPaymentAmount}`
                   ) : (
-                    "Pay Full Amount"
+                    `Pay Full Amount (₹${maxAmount})`
                   )
                 ) : (
-                  "Confirm Payment"
+                  `Confirm Payment (₹${maxAmount})`
                 )}
               </button>
             </div>
+
+            {/* Payment Summary */}
+            {hasPendingPayments && (
+              <div className="mt-3 text-center text-xs text-gray-600">
+                {!isCustomPayment ? (
+                  <p>
+                    Paying all {pendingCount} pending {amountLabel}(s) × ₹
+                    {regularAmount} = ₹{maxAmount}
+                  </p>
+                ) : customAmount && isAmountValid ? (
+                  <p>
+                    Paying {periodsCovered} out of {pendingCount} pending{" "}
+                    {amountLabel}(s)
+                  </p>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2567,10 +3942,8 @@ const AccountsPage = () => {
 
   // Main Render
   return (
- 
-      
     <div className="min-h-screen w-screen mx-[-9.5rem] mt-[-3.5rem] bg-gradient-to-br from-gray-50 via-gray-50 to-blue-500/5 p-6">
-    <Navbar/>
+      <Navbar />
       <div className="max-w-6xl mx-auto space-y-6 mt-[2rem]">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -2631,18 +4004,21 @@ const AccountsPage = () => {
                 )}
 
                 {/* Pending Payment Badge */}
-                {pending?.hasPending &&
-                  !pending?.isMaturityReached &&
-                  !pending?.hasPaidToday && (
-                    <div className="absolute -top-2 -right-2">
-                      <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        {pending.count} Pending
-                      </span>
-                    </div>
-                  )}
+                {pending?.hasPending && !pending?.isMaturityReached && (
+                  <div className="absolute -top-2 -right-2">
+                    <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center">
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      {pending.count} pending
+                      {pending.additionalPendingFromWithdrawals > 0 && (
+                        <span className="ml-1 text-xs">
+                          (+{pending.additionalPendingFromWithdrawals} W)
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )}
 
-                {/* Already Paid Today Badge - FIXED: Only show when there are no pending payments for today */}
+                {/* Already Paid Today Badge */}
                 {pending?.hasPaidToday && !pending?.hasPending && (
                   <div className="absolute -top-2 -right-2">
                     <span className="bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center">
@@ -2701,7 +4077,7 @@ const AccountsPage = () => {
                           <span className="text-xs font-bold text-blue-600">
                             {calculateProgress(
                               pending.totalPaidAmount,
-                              pending.maturityAmount
+                              pending.progressMaturityAmount
                             ).toFixed(1)}
                             %
                           </span>
@@ -2712,11 +4088,17 @@ const AccountsPage = () => {
                             style={{
                               width: `${calculateProgress(
                                 pending.totalPaidAmount,
-                                pending.maturityAmount
+                                pending.progressMaturityAmount
                               )}%`,
                             }}
                           ></div>
                         </div>
+                        {/* Show pending days */}
+                        {pending.pendingDays > 0 && (
+                          <div className="text-xs text-red-600 mt-1 font-semibold">
+                            {pending.pendingDays} days remaining
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2726,6 +4108,7 @@ const AccountsPage = () => {
                 <div className="p-4">
                   <div className="flex gap-2">
                     <button
+                      hidden
                       onClick={() => handleViewPaymentHistory(account)}
                       className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-md transition-colors text-sm flex items-center justify-center gap-1"
                     >
@@ -2737,9 +4120,11 @@ const AccountsPage = () => {
                       !pending?.isMaturityReached && (
                         <button
                           onClick={() => handlePayment(account)}
-                          disabled={pending?.hasPaidToday}
+                          disabled={
+                            pending?.hasPaidToday && !pending?.hasPending
+                          }
                           className={`flex-1 px-3 py-2 rounded-md transition-colors text-sm flex items-center justify-center gap-1 ${
-                            pending?.hasPaidToday
+                            pending?.hasPaidToday && !pending?.hasPending
                               ? "bg-gray-400 cursor-not-allowed text-white"
                               : pending?.hasPending
                               ? "bg-red-600 hover:bg-red-700 text-white"
@@ -2747,7 +4132,7 @@ const AccountsPage = () => {
                           }`}
                         >
                           <DollarSign className="h-4 w-4" />
-                          {pending?.hasPaidToday
+                          {pending?.hasPaidToday && !pending?.hasPending
                             ? "Paid Today"
                             : pending?.hasPending
                             ? "Pay Pending"
@@ -2793,10 +4178,8 @@ const AccountsPage = () => {
 
       {/* Withdrawal History Modal */}
       <WithdrawalHistoryModal />
-       <Footer/>
+      <Footer />
     </div>
-   
-    
   );
 };
 

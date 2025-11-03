@@ -1,6 +1,7 @@
 import { LogOut, PiggyBank } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import Swal from 'sweetalert2';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -13,18 +14,40 @@ const Navbar = () => {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("customerToken");
-    localStorage.removeItem("customerData");
-    navigate("/auth");
+    Swal.fire({
+      title: "Logout?",
+      text: "You will need to login again to access your account.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#3085d6",
+      confirmButtonText: "Yes, logout!",
+      cancelButtonText: "Cancel",
+    }).then((result) => {
+      if (result.isConfirmed) {
+        localStorage.removeItem("customerToken");
+        localStorage.removeItem("customerData");
+        navigate("/auth");
+
+        Swal.fire({
+          title: "Logged Out!",
+          text: "You have been successfully logged out.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false,
+        });
+      }
+    });
   };
 
   const images = {
-    headerBg: "https://images.unsplash.com/photo-1554224155-6726b3ff858f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2011&q=80"
+    headerBg:
+      "https://images.unsplash.com/photo-1554224155-6726b3ff858f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2011&q=80",
   };
 
   return (
-    <header className="relative bg-gradient-to-r from-blue-600 to-blue-800 shadow-2xl overflow-hidden">
-      <div 
+    <header className="relative bg-gradient-to-r from-blue-600 to-blue-800 shadow-2xl overflow-hidden w-screen mx-[-1.3rem] ">
+      <div
         className="absolute inset-0 bg-cover bg-center opacity-20"
         style={{ backgroundImage: `url(${images.headerBg})` }}
       ></div>

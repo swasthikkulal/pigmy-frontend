@@ -272,23 +272,39 @@ const ManagePayments = () => {
     return type === "deposit" ? "+" : "-";
   };
 
-  const formatPaymentData = (payment) => {
-    // Handle different payment object structures from API
-    return {
-      _id: payment._id,
-      accountNumber: payment.accountId?.accountNumber || payment.accountNumber || "N/A",
-      customerName: payment.customerId?.name || payment.customerName || "Unknown",
-      customerId: payment.customerId?.customerId || payment.customerId?._id || "N/A",
-      amount: payment.amount || 0,
-      type: payment.type || "deposit",
-      status: payment.status || "pending",
-      date: payment.date || payment.createdAt || new Date().toISOString(),
-      collectedBy: payment.collectorId?.name || payment.collectedBy || "Unknown",
-      description: payment.description || "No description",
-      referenceNumber: payment.referenceNumber || payment._id,
-    };
+  // const formatPaymentData = (payment) => {
+  //   // Handle different payment object structures from API
+  //   return {
+  //     _id: payment._id,
+  //     accountNumber: payment.accountId?.accountNumber || payment.accountNumber || "N/A",
+  //     customerName: payment.customerId?.name || payment.customerName || "Unknown",
+  //     customerId: payment.customerId?.customerId || payment.customerId?._id || "N/A",
+  //     amount: payment.amount || 0,
+  //     type: payment.type || "deposit",
+  //     status: payment.status || "pending",
+  //     date: payment.date || payment.createdAt || new Date().toISOString(),
+  //     collectedBy: payment.collectorId?.name || payment.collectedBy || "Unknown",
+  //     description: payment.description || "No description",
+  //     referenceNumber: payment.referenceNumber || payment._id,
+  //   };
+  // };
+const formatPaymentData = (payment) => {
+  // Handle different payment object structures from API
+  return {
+    _id: payment._id,
+    accountNumber: payment.accountId?.accountNumber || payment.accountNumber || "N/A",
+    customerName: payment.customerId?.name || payment.customerName || "Unknown",
+    customerId: payment.customerId?.customerId || payment.customerId?._id || "N/A",
+    amount: payment.amount || 0,
+    type: payment.type || "deposit",
+    status: payment.status || "pending",
+    date: payment.date || payment.createdAt || new Date().toISOString(),
+    collectedBy: payment.collectorId?.name || payment.collectedBy || "Unknown",
+    description: payment.description || "No description",
+    referenceNumber: payment.referenceNumber || payment._id,
+    remarks: payment.remarks || "", // ✅ ADD REMARKS FIELD
   };
-
+};
   const filteredPayments = payments
     .map(formatPaymentData)
     .filter((payment) => {
@@ -305,37 +321,67 @@ const ManagePayments = () => {
       return matchesSearch && matchesStatus && matchesType;
     });
 
-  const exportPayments = () => {
-    try {
-      const csvContent = [
-        ["Customer Name", "Account Number", "Amount", "Type", "Status", "Date", "Collector", "Reference"],
-        ...filteredPayments.map(payment => [
-          payment.customerName,
-          payment.accountNumber,
-          payment.amount,
-          payment.type,
-          payment.status,
-          new Date(payment.date).toLocaleDateString(),
-          payment.collectedBy,
-          payment.referenceNumber
-        ])
-      ].map(row => row.join(",")).join("\n");
+  // const exportPayments = () => {
+  //   try {
+  //     const csvContent = [
+  //       ["Customer Name", "Account Number", "Amount", "Type", "Status", "Date", "Collector", "Reference"],
+  //       ...filteredPayments.map(payment => [
+  //         payment.customerName,
+  //         payment.accountNumber,
+  //         payment.amount,
+  //         payment.type,
+  //         payment.status,
+  //         new Date(payment.date).toLocaleDateString(),
+  //         payment.collectedBy,
+  //         payment.referenceNumber
+  //       ])
+  //     ].map(row => row.join(",")).join("\n");
 
-      const blob = new Blob([csvContent], { type: "text/csv" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `payments-${new Date().toISOString().split('T')[0]}.csv`;
-      link.click();
-      window.URL.revokeObjectURL(url);
+  //     const blob = new Blob([csvContent], { type: "text/csv" });
+  //     const url = window.URL.createObjectURL(blob);
+  //     const link = document.createElement("a");
+  //     link.href = url;
+  //     link.download = `payments-${new Date().toISOString().split('T')[0]}.csv`;
+  //     link.click();
+  //     window.URL.revokeObjectURL(url);
       
-      alert("Payments data exported successfully!");
-    } catch (error) {
-      console.error("Error exporting payments:", error);
-      alert("Error exporting payments data");
-    }
-  };
+  //     alert("Payments data exported successfully!");
+  //   } catch (error) {
+  //     console.error("Error exporting payments:", error);
+  //     alert("Error exporting payments data");
+  //   }
+  // };
+const exportPayments = () => {
+  try {
+    const csvContent = [
+      ["Customer Name", "Account Number", "Amount", "Type", "Status", "Date", "Collector", "Reference", "Remarks"], // ✅ ADD REMARKS
+      ...filteredPayments.map(payment => [
+        payment.customerName,
+        payment.accountNumber,
+        payment.amount,
+        payment.type,
+        payment.status,
+        new Date(payment.date).toLocaleDateString(),
+        payment.collectedBy,
+        payment.referenceNumber,
+        payment.remarks || "" // ✅ ADD REMARKS DATA
+      ])
+    ].map(row => row.join(",")).join("\n");
 
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `payments-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    
+    alert("Payments data exported successfully!");
+  } catch (error) {
+    console.error("Error exporting payments:", error);
+    alert("Error exporting payments data");
+  }
+};
   const totalCollections = payments
     .filter((p) => p.type === "deposit" && (p.status === "completed" || p.status === "verified"))
     .reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -508,7 +554,7 @@ const ManagePayments = () => {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            {/* <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Customer
@@ -538,8 +584,42 @@ const ManagePayments = () => {
                   Actions
                 </th>
               </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            </thead> */}
+            <thead className="bg-gray-50">
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Customer
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Account
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Amount
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Type
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Status
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Date
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Collector
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Reference
+          </th>
+          {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Remarks
+          </th>  */}
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Actions
+          </th>
+        </tr>
+      </thead>
+            {/* <tbody className="bg-white divide-y divide-gray-200">
               {filteredPayments.map((payment) => (
                 <tr key={payment._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -636,7 +716,125 @@ const ManagePayments = () => {
                   </td>
                 </tr>
               ))}
-            </tbody>
+            </tbody> */}
+            <tbody className="bg-white divide-y divide-gray-200">
+  {filteredPayments.map((payment) => (
+    <tr key={payment._id} className="hover:bg-gray-50">
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center">
+          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+            <User className="h-4 w-4 text-blue-600" />
+          </div>
+          <div className="ml-3">
+            <div className="text-sm font-medium text-gray-900">
+              {payment.customerName}
+            </div>
+            <div className="text-sm text-gray-500">
+              {payment.customerId}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {payment.accountNumber}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+        <span className={getTypeColor(payment.type)}>
+          {getTypeSymbol(payment.type)}₹
+          {payment.amount.toLocaleString()}
+        </span>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <span
+          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+            payment.type === "deposit"
+              ? "bg-green-100 text-green-800"
+              : "bg-red-100 text-red-800"
+          }`}
+        >
+          {payment.type}
+        </span>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center">
+          {getStatusIcon(payment.status)}
+          <span
+            className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+              payment.status
+            )}`}
+          >
+            {payment.status}
+          </span>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {new Date(payment.date).toLocaleDateString()}
+        <div className="text-xs text-gray-500">
+          {new Date(payment.date).toLocaleTimeString()}
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {payment.collectedBy}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
+        {payment.referenceNumber.substring(0, 8)}...
+      </td>
+      <td className="px-6 py-4 text-sm text-gray-900 max-w-xs" hidden>
+        {payment.remarks ? (
+          <div className="group relative">
+            <span className="truncate block cursor-help" title={payment.remarks}>
+              {payment.remarks.length > 30 
+                ? `${payment.remarks.substring(0, 30)}...` 
+                : payment.remarks
+              }
+            </span>
+            {/* Tooltip for full remarks */}
+            <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-10">
+              <div  className="bg-gray-800 text-white text-xs rounded py-1 px-2 whitespace-nowrap">
+                {payment.remarks}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <span className="text-gray-400 italic">No remarks</span>
+        )}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setSelectedPayment(payment)}
+            className="text-blue-600 hover:text-blue-900"
+            title="View Details"
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+          {payment.status === "pending" && (
+            <>
+              <button
+                onClick={() =>
+                  handleStatusUpdate(payment._id, "completed")
+                }
+                className="text-green-600 hover:text-green-900"
+                title="Mark as Completed"
+              >
+                <CheckCircle className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() =>
+                  handleStatusUpdate(payment._id, "failed")
+                }
+                className="text-red-600 hover:text-red-900"
+                title="Mark as Failed"
+              >
+                <XCircle className="h-4 w-4" />
+              </button>
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  ))}
+</tbody>
           </table>
         </div>
 
@@ -654,6 +852,7 @@ const ManagePayments = () => {
           </div>
         )}
       </div>
+      
 
       {/* Process Payment Modal */}
       {showPaymentModal && (
@@ -795,7 +994,7 @@ const ManagePayments = () => {
       )}
 
       {/* Payment Details Modal */}
-      {selectedPayment && (
+      {/* {selectedPayment && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
             <div className="p-6">
@@ -860,7 +1059,83 @@ const ManagePayments = () => {
             </div>
           </div>
         </div>
-      )}
+      )} */}
+      {/* Payment Details Modal */}
+{selectedPayment && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Payment Details
+          </h2>
+          <button
+            onClick={() => setSelectedPayment(null)}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <XCircle className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex justify-between">
+            <span className="text-sm font-medium text-gray-600">Customer:</span>
+            <span className="text-sm text-gray-900">{selectedPayment.customerName}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-sm font-medium text-gray-600">Account:</span>
+            <span className="text-sm text-gray-900">{selectedPayment.accountNumber}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-sm font-medium text-gray-600">Amount:</span>
+            <span className={`text-sm font-medium ${getTypeColor(selectedPayment.type)}`}>
+              {getTypeSymbol(selectedPayment.type)}₹{selectedPayment.amount.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-sm font-medium text-gray-600">Type:</span>
+            <span className="text-sm text-gray-900 capitalize">{selectedPayment.type}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-sm font-medium text-gray-600">Status:</span>
+            <span className={`text-sm ${getStatusColor(selectedPayment.status)} px-2 py-1 rounded-full`}>
+              {selectedPayment.status}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-sm font-medium text-gray-600">Date:</span>
+            <span className="text-sm text-gray-900">
+              {new Date(selectedPayment.date).toLocaleString()}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-sm font-medium text-gray-600">Collector:</span>
+            <span className="text-sm text-gray-900">{selectedPayment.collectedBy}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-sm font-medium text-gray-600">Reference:</span>
+            <span className="text-sm text-gray-900 font-mono">{selectedPayment.referenceNumber}</span>
+          </div>
+          {/* ✅ ADD REMARKS TO DETAILS MODAL */}
+          {selectedPayment.remarks && (
+            <div>
+              <span className="text-sm font-medium text-gray-600">Remarks:</span>
+              <div className="mt-1 p-2 bg-gray-50 rounded border">
+                <p className="text-sm text-gray-900">{selectedPayment.remarks}</p>
+              </div>
+            </div>
+          )}
+          {selectedPayment.description && (
+            <div>
+              <span className="text-sm font-medium text-gray-600">Description:</span>
+              <p className="text-sm text-gray-900 mt-1">{selectedPayment.description}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 };

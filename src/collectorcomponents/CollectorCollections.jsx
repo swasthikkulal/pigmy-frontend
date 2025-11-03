@@ -41,6 +41,7 @@ const CollectorCollections = () => {
     total: 0,
     pending: 0,
     completed: 0,
+    rejected: 0,
     totalAmount: 0,
   });
 
@@ -75,15 +76,38 @@ const CollectorCollections = () => {
         const payments = paymentsResponse.data.data || [];
         const apiStats = paymentsResponse.data.stats || {};
 
-        console.log("Payments received:", payments);
-        console.log("Stats received:", apiStats);
+        console.log("All payments received:", payments);
 
-        setCollections(payments);
-        setStats(apiStats);
+        // ✅ FILTER OUT WITHDRAWAL REQUESTS - Only show deposits
+        const collectionsOnly = payments.filter(
+          (payment) =>
+            payment.type !== "withdrawal" &&
+            payment.type !== "withdrawal_request"
+        );
+
+        console.log("Filtered collections (no withdrawals):", collectionsOnly);
+
+        setCollections(collectionsOnly);
+
+        // Update stats to reflect only collections (deposits)
+        const filteredStats = {
+          total: collectionsOnly.length,
+          pending: collectionsOnly.filter((p) => p.status === "pending").length,
+          completed: collectionsOnly.filter(
+            (p) => p.status === "completed" || p.status === "verified"
+          ).length,
+          rejected: collectionsOnly.filter((p) => p.status === "failed").length, // Count 'failed' as rejected
+          totalAmount: collectionsOnly.reduce(
+            (sum, p) => sum + (p.amount || 0),
+            0
+          ),
+        };
+
+        setStats(filteredStats);
 
         // Set collector info from the first payment if available
-        if (payments.length > 0 && payments[0].collectorId) {
-          setCollectorInfo(payments[0].collectorId);
+        if (collectionsOnly.length > 0 && collectionsOnly[0].collectorId) {
+          setCollectorInfo(collectionsOnly[0].collectorId);
         }
       }
     } catch (error) {
@@ -92,42 +116,126 @@ const CollectorCollections = () => {
       setLoading(false);
     }
   };
+  // const handleUpdateStatus = async (paymentId, newStatus) => {
+  //   // If rejecting, ask for a reason and use 'failed' status
+  //   let rejectionReason = "";
+  //   if (newStatus === "rejected") {
+  //     const reason = prompt("Please enter reason for rejection:");
+  //     if (!reason || reason.trim().length === 0) {
+  //       alert("Rejection reason is required.");
+  //       return;
+  //     }
+  //     rejectionReason = reason.trim();
+  //     // Use 'failed' status for rejections
+  //     newStatus = "failed";
+  //   }
 
-  const handleUpdateStatus = async (paymentId, newStatus) => {
-    setUpdatingStatus(paymentId);
-    try {
-      const response = await axios.patch(
-        `http://localhost:5000/api/payments/${paymentId}/status`,
-        { status: newStatus },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+  //   setUpdatingStatus(paymentId);
+  //   try {
+  //     const response = await axios.patch(
+  //       `http://localhost:5000/api/payments/${paymentId}/status`,
+  //       {
+  //         status: newStatus,
+  //         // Include rejection reason if available
+  //         ...(rejectionReason && { rejectionReason }),
+  //       },
+  //       {
+  //         headers: {
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //       }
+  //     );
 
-      if (response.data.success) {
-        // Update local state
-        setCollections(
-          collections.map((collection) =>
-            collection._id === paymentId
-              ? { ...collection, status: newStatus }
-              : collection
-          )
-        );
+  //     if (response.data.success) {
+  //       // Update local state
+  //       setCollections(
+  //         collections.map((collection) =>
+  //           collection._id === paymentId
+  //             ? {
+  //                 ...collection,
+  //                 status: newStatus,
+  //                 ...(rejectionReason && { rejectionReason }),
+  //               }
+  //             : collection
+  //         )
+  //       );
 
-        // Refresh stats
-        fetchCollectorCollections();
+  //       // Refresh stats
+  //       fetchCollectorCollections();
 
-        alert(`Payment status updated to ${newStatus}`);
-      }
-    } catch (error) {
-      console.error("Error updating status:", error);
-      alert("Failed to update status");
-    } finally {
-      setUpdatingStatus(null);
+  //       alert(
+  //         `Payment status updated to ${
+  //           newStatus === "failed" ? "rejected" : newStatus
+  //         }`
+  //       );
+  //     }
+  //   } catch (error) {
+  //     console.error("Error updating status:", error);
+  //     alert("Failed to update status");
+  //   } finally {
+  //     setUpdatingStatus(null);
+  //   }
+  // };
+const handleUpdateStatus = async (paymentId, newStatus) => {
+  // If rejecting, ask for a reason and use 'failed' status
+  let remarks = ""; // Changed from rejectionReason to remarks
+  if (newStatus === "rejected") {
+    const reason = prompt("Please enter reason for rejection:");
+    if (!reason || reason.trim().length === 0) {
+      alert("Rejection reason is required.");
+      return;
     }
-  };
+    remarks = reason.trim(); // Store in remarks field
+    // Use 'failed' status for rejections
+    newStatus = "failed";
+  }
+
+  setUpdatingStatus(paymentId);
+  try {
+    const response = await axios.patch(
+      `http://localhost:5000/api/payments/${paymentId}/status`,
+      {
+        status: newStatus,
+        // Send as 'remarks' instead of 'rejectionReason'
+        ...(remarks && { remarks }), // Changed from rejectionReason to remarks
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+   if (response.data.success) {
+  // Update local state with remarks from response
+  setCollections(
+    collections.map((collection) =>
+      collection._id === paymentId
+        ? {
+            ...collection,
+            status: newStatus,
+            remarks: response.data.data.remarks || remarks, // Use response data
+          }
+        : collection
+    )
+  );
+
+  // Refresh stats
+  fetchCollectorCollections();
+
+  alert(
+    `Payment status updated to ${
+      newStatus === "failed" ? "rejected" : newStatus
+    }`
+  );
+}
+  } catch (error) {
+    console.error("Error updating status:", error);
+    alert("Failed to update status");
+  } finally {
+    setUpdatingStatus(null);
+  }
+};
 
   const handleViewDetails = (collection) => {
     setSelectedCollection(collection);
@@ -158,7 +266,7 @@ const CollectorCollections = () => {
         color:
           "bg-gradient-to-r from-red-100 to-red-50 text-red-800 border border-red-200",
         icon: XCircle,
-        label: "Failed",
+        label: "Rejected", // Show "Rejected" label for "failed" status
       },
     };
 
@@ -227,7 +335,10 @@ const CollectorCollections = () => {
         collection.customerId.phone.includes(searchTerm));
 
     const matchesStatus =
-      statusFilter === "all" || collection.status === statusFilter;
+      statusFilter === "all" ||
+      (statusFilter === "failed"
+        ? collection.status === "failed"
+        : collection.status === statusFilter);
 
     return matchesSearch && matchesStatus;
   });
@@ -447,6 +558,7 @@ const CollectorCollections = () => {
                 <option value="all">All Status</option>
                 <option value="pending">Pending</option>
                 <option value="completed">Completed</option>
+                <option value="failed">Rejected</option>
               </select>
 
               <div className="text-sm text-gray-600">
@@ -547,11 +659,21 @@ const CollectorCollections = () => {
                           ).toLocaleDateString()}
                         </span>
                       </div>
-                      <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                      {/* <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
                         {collection.accountId?.accountType || "N/A"} • ₹
                         {collection.accountId?.dailyAmount}/week
-                      </div>
+                      </div> */}
                     </div>
+
+                    {/* Show rejection reason if available */}
+                    {collection.remarks && (
+  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+    <p className="text-sm text-red-700">
+      <span className="font-medium">Rejection Reason:</span>{" "}
+      {collection.remarks}
+    </p>
+  </div>
+)}
                   </div>
 
                   {/* Actions */}
@@ -563,27 +685,53 @@ const CollectorCollections = () => {
                       <Eye className="h-4 w-4" />
                       <span>View Details</span>
                     </button>
-
+                  
                     {collection.status === "pending" && (
-                      <button
-                        onClick={() =>
-                          handleUpdateStatus(collection._id, "completed")
-                        }
-                        disabled={updatingStatus === collection._id}
-                        className="flex items-center space-x-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50"
-                      >
-                        {updatingStatus === collection._id ? (
-                          <>
-                            <RefreshCw className="h-3 w-3 animate-spin" />
-                            <span>Processing...</span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle className="h-3 w-3" />
-                            <span>Complete</span>
-                          </>
+                      <div className="flex space-x-2">
+                        {/* Reject Button - Show for cash payments */}
+                        {collection.paymentMethod === "cash" && (
+                          <button
+                            onClick={() =>
+                              handleUpdateStatus(collection._id, "rejected")
+                            } // Pass "rejected" but it will be converted to "failed"
+                            disabled={updatingStatus === collection._id}
+                            className="flex items-center space-x-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50"
+                          >
+                            {updatingStatus === collection._id ? (
+                              <>
+                                <RefreshCw className="h-3 w-3 animate-spin" />
+                                <span>Processing...</span>
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="h-3 w-3" />
+                                <span>Reject</span>
+                              </>
+                            )}
+                          </button>
                         )}
-                      </button>
+
+                        {/* Complete Button */}
+                        <button
+                          onClick={() =>
+                            handleUpdateStatus(collection._id, "completed")
+                          }
+                          disabled={updatingStatus === collection._id}
+                          className="flex items-center space-x-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50"
+                        >
+                          {updatingStatus === collection._id ? (
+                            <>
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                              <span>Processing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="h-3 w-3" />
+                              <span>Complete</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -722,6 +870,23 @@ const CollectorCollections = () => {
                     </div>
                   </div>
 
+                  {/* Show rejection reason if available */}
+                  {selectedCollection.rejectionReason && (
+                    <div className="border-t pt-4 mt-4">
+                      <div className="flex items-center space-x-3 mb-3">
+                        <XCircle className="h-4 w-4 text-red-500" />
+                        <span className="font-medium text-gray-700">
+                          Rejection Reason
+                        </span>
+                      </div>
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <p className="text-red-700">
+                          {selectedCollection.rejectionReason}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {selectedCollection.collectorId && (
                     <div className="border-t pt-4 mt-4">
                       <div className="flex items-center space-x-3 mb-3">
@@ -754,26 +919,62 @@ const CollectorCollections = () => {
               {/* Action Buttons */}
               <div className="mt-8 flex space-x-3">
                 {selectedCollection.status === "pending" && (
-                  <button
-                    onClick={() => {
-                      handleUpdateStatus(selectedCollection._id, "completed");
-                      setShowDetailModal(false);
-                    }}
-                    disabled={updatingStatus === selectedCollection._id}
-                    className="flex-1 flex items-center justify-center space-x-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50"
-                  >
-                    {updatingStatus === selectedCollection._id ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        <span>Processing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="h-4 w-4" />
-                        <span>Mark Complete</span>
-                      </>
+                  <>
+                    {/* Reject Button - Show for cash payments */}
+                    {selectedCollection.paymentMethod === "cash" && (
+                      <button
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              "Are you sure you want to reject this payment? This action cannot be undone."
+                            )
+                          ) {
+                            handleUpdateStatus(
+                              selectedCollection._id,
+                              "rejected"
+                            );
+                            setShowDetailModal(false);
+                          }
+                        }}
+                        disabled={updatingStatus === selectedCollection._id}
+                        className="flex-1 flex items-center justify-center space-x-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50"
+                      >
+                        {updatingStatus === selectedCollection._id ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                            <span>Processing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="h-4 w-4" />
+                            <span>Reject Payment</span>
+                          </>
+                        )}
+                      </button>
                     )}
-                  </button>
+
+                    {/* Complete Button */}
+                    <button
+                      onClick={() => {
+                        handleUpdateStatus(selectedCollection._id, "completed");
+                        setShowDetailModal(false);
+                      }}
+                      disabled={updatingStatus === selectedCollection._id}
+                      className="flex-1 flex items-center justify-center space-x-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50"
+                    >
+                      {updatingStatus === selectedCollection._id ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          <span>Processing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="h-4 w-4" />
+                          <span>Mark Complete</span>
+                        </>
+                      )}
+                    </button>
+                  </>
                 )}
 
                 <button

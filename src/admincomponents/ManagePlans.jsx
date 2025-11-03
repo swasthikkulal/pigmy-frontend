@@ -366,13 +366,13 @@ const ManagePlans = () => {
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-sm">
+                {/* <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Subscribers</span>
                   <span className="font-medium text-gray-900 flex items-center">
                     <Users className="h-4 w-4 mr-1" />
                     {plan.totalSubscribers || 0}
                   </span>
-                </div>
+                </div> */}
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-gray-200">
@@ -393,7 +393,7 @@ const ManagePlans = () => {
                   </button>
                 </div>
 
-                <select hidden
+                <select 
                 
                   value={plan.status}
                   onChange={(e) => handleStatusUpdate(plan._id, e.target.value)}
